@@ -3,8 +3,12 @@
   "version": "0.1.0",
   "description": "Schedule my Frontpoint home security system actions",
   "esy": {
-		"build": "refmterr dune build -p #{self.name}",
-    "release": { "bin": [ "Scheduler" ] } 
+    "build": "refmterr dune build -p #{self.name}",
+    "release": {
+      "bin": [
+        "Scheduler"
+      ]
+    }
   },
   "scripts": {
     "test": "esy x Scheduler"
@@ -13,9 +17,13 @@
     "reasonml",
     "frontpoint"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/initialxy/initialxy-frontpoint-scheduler.git"
+  },
   "author": "initialxy",
   "license": "MIT",
-	"dependencies": {
+  "dependencies": {
     "@esy-ocaml/reason": ">= 3.4.0 < 3.5.0",
     "@opam/cohttp": "2.1.2",
     "@opam/cohttp-lwt-unix": "2.0.0",
