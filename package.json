@@ -1,0 +1,36 @@
+{
+  "name": "initialxy-frontpoint-scheduler",
+  "version": "0.1.0",
+  "description": "Schedule my Frontpoint home security system actions",
+  "esy": {
+		"build": "refmterr dune build -p #{self.name}",
+    "release": { "bin": [ "Scheduler" ] } 
+  },
+  "scripts": {
+    "test": "esy x Scheduler"
+  },
+  "keywords": [
+    "reasonml",
+    "frontpoint"
+  ],
+  "author": "initialxy",
+  "license": "MIT",
+	"dependencies": {
+    "@esy-ocaml/reason": ">= 3.4.0 < 3.5.0",
+    "@opam/cohttp": "2.1.2",
+    "@opam/cohttp-lwt-unix": "2.0.0",
+    "@opam/dune": "*",
+    "@opam/lwt": "4.2.1",
+    "@opam/sqlite3": "4.4.1",
+    "@reason-native/console": "*",
+    "@reason-native/pastel": "*",
+    "@reason-native/rely": "*",
+    "ocaml": "~4.6.0",
+    "refmterr": "^3.1.10"
+  },
+  "devDependencies": {
+    "@opam/merlin": "*",
+    "ocaml": "~4.6.0",
+    "@opam/odoc": "*"
+  }
+}
