@@ -29,6 +29,7 @@
     "@opam/cohttp-lwt-unix": "2.0.0",
     "@opam/dune": "*",
     "@opam/lwt": "4.2.1",
+    "@opam/lwt_ssl": "1.1.2",
     "@opam/sqlite3": "4.4.1",
     "@reason-native/console": "*",
     "@reason-native/pastel": "*",

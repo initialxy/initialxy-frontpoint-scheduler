@@ -1,7 +1,17 @@
-open Lwt
-open Cohttp
-open Cohttp_lwt_unix
-open Sqlite3
+open Lwt;
+open Cohttp;
+open Cohttp_lwt_unix;
+open Sqlite3;
 
-Console.log("Test Test Test");
-let () = print_endline("Hello World!");
+let main =
+  Client.get(Uri.of_string("https://initialxy.com"))
+  >>= result => {
+    let (resp, body) = result;
+    Cohttp_lwt.Body.to_string(body)
+    >>= b => {
+      Console.log(b);
+      Lwt.return();
+    }
+  }
+
+let () = Lwt_main.run(main);
