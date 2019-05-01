@@ -1,4 +1,4 @@
 (executable
   (name Scheduler)
   (public_name Scheduler)
-  (libraries console.lib cohttp lwt cohttp-lwt-unix sqlite3))
+  (libraries str console.lib cohttp lwt cohttp-lwt-unix sqlite3))
