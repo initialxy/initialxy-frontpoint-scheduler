@@ -34,13 +34,13 @@ let readPassword = () => {
 let preprocessResponse = (
   extra: option('a),
   response: (Response.t, Cohttp_lwt.Body.t),
-) : Lwt.t((option('a), Code.status_code, string, string)) => {
+) : Lwt.t((option('a), string, string)) => {
   let (meta, body) = response;
   let code = Response.status(meta);
   if (code == `OK || code == `Found) {
     let cookie = String.concat("; ",Header.get_multi(Response.headers(meta), "set-cookie"));
     Cohttp_lwt.Body.to_string(body)
-    >>= bodyText => Lwt.return((extra, code, cookie, bodyText));
+    >>= bodyText => Lwt.return((extra, cookie, bodyText));
   } else {
     Lwt.fail(Failure("Response failed"));
   }
@@ -70,7 +70,7 @@ let login = (userName: string, password: string) : Lwt.t(authInfo) => {
   )
   >>= preprocessResponse(None)
   >>= result => {
-    let (_, _, _, body) = result
+    let (_, _, body) = result
     stripQuotes(body)
   }
   >>= token => {
@@ -90,7 +90,7 @@ let login = (userName: string, password: string) : Lwt.t(authInfo) => {
     >>= preprocessResponse(Some(token))
   }
   >>= result => {
-    let (maybeToken, _, _, body) = result;
+    let (maybeToken, _, body) = result;
     stripQuotes(body)
     >>= dest => {
       Client.get(Uri.of_string(dest))
@@ -98,7 +98,7 @@ let login = (userName: string, password: string) : Lwt.t(authInfo) => {
     }
   }
   >>= result => {
-    let (maybeToken, _, cookie, body) = result;
+    let (maybeToken, cookie, body) = result;
     if (maybeToken != None) {
       let tokenText = switch(maybeToken) {
         | None => ""
