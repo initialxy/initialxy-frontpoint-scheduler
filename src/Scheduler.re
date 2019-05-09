@@ -5,6 +5,7 @@ open Sqlite3;
 open Unix;
 
 type authInfo = {
+  afg: string,
   cookie: string,
   token: string
 }
@@ -30,6 +31,29 @@ let readPassword = () => {
   password;
 }
 
+let preprocessResponse = (
+  extra: option('a),
+  response: (Response.t, Cohttp_lwt.Body.t),
+) : Lwt.t((option('a), Code.status_code, string, string)) => {
+  let (meta, body) = response;
+  let code = Response.status(meta);
+  if (code == `OK || code == `Found) {
+    let cookie = String.concat("; ",Header.get_multi(Response.headers(meta), "set-cookie"));
+    Cohttp_lwt.Body.to_string(body)
+    >>= bodyText => Lwt.return((extra, code, cookie, bodyText));
+  } else {
+    Lwt.fail(Failure("Response failed"));
+  }
+}
+
+let stripQuotes = quotedStr => {
+  if (Str.string_match(Str.regexp({|^"\(.+\)"$|}), quotedStr, 0)) {
+    Lwt.return(Str.matched_group(1, quotedStr));
+  } else {
+    Lwt.fail(Failure("Can't strip quotes"));
+  }
+}
+
 let login = (userName: string, password: string) : Lwt.t(authInfo) => {
   Client.post(
     ~headers = Header.of_list([
@@ -44,21 +68,50 @@ let login = (userName: string, password: string) : Lwt.t(authInfo) => {
     )),
     Uri.of_string(tokenURL),
   )
+  >>= preprocessResponse(None)
   >>= result => {
-    let (resp, body) = result;
-    let code = Response.status(resp);
-    if (code == `OK) {
-      Cohttp_lwt.Body.to_string(body)
-    } else {
-      Lwt.fail(Failure("Token fetch failed"))
-    }
+    let (_, _, _, body) = result
+    stripQuotes(body)
   }
   >>= token => {
-    if (Str.string_match(Str.regexp({|"\(.+\)"|}), token, 0)) {
-      let token = Str.matched_group(1, token);
-      Lwt.return({cookie: "", token: token});
+    Client.post(
+      ~headers = Header.of_list([
+        ("Content-Type", contentType),
+        ("Cookie", "FPTOKEN=" ++ token),
+        ("Authorization", "Bearer " ++ token),
+        ("Referer", loginURL),
+        ("User-Agent", userAgent),
+      ]),
+      ~body = Cohttp_lwt.Body.of_string(
+        Printf.sprintf({|{"Href":"%s"}|}, loginURL),
+      ),
+      Uri.of_string(redirectURL),
+    )
+    >>= preprocessResponse(Some(token))
+  }
+  >>= result => {
+    let (maybeToken, _, _, body) = result;
+    stripQuotes(body)
+    >>= dest => {
+      Client.get(Uri.of_string(dest))
+      >>= preprocessResponse(maybeToken)
+    }
+  }
+  >>= result => {
+    let (maybeToken, _, cookie, body) = result;
+    if (maybeToken != None) {
+      let tokenText = switch(maybeToken) {
+        | None => ""
+        | Some(t) => t
+      }
+      if (Str.string_match(Str.regexp({|.*\bafg=\([^;]+\);.*|}), cookie, 0)) {
+        let afg = Str.matched_group(1, cookie);
+        Lwt.return({afg: afg, cookie: cookie, token: tokenText});
+      } else {
+        Lwt.fail(Failure("afg not found in cookie"));
+      }
     } else {
-      Lwt.fail(Failure("Token in unexpected format"))
+      Lwt.fail(Failure("Token not found"));
     }
   }
 }
@@ -71,15 +124,16 @@ let main = () => {
   Lwt.catch(
     () => login(userName, password)
     >>= auth => {
+      Console.log(auth.afg);
       Console.log(auth.token);
+      Console.log(auth.cookie);
       Lwt.return();
     },
     e => {
-      switch(e) {
+      Lwt.return(switch(e) {
         | Failure(msg) => Console.log(msg);
         | _ => Console.log("error");
-      }
-      Lwt.return();
+      });
     },
   );
 }
