@@ -11,11 +11,31 @@ type authInfo = {
   token: string
 }
 
+type armState =
+  | Disarm
+  | ArmStay
+  | ArmAway
+
+let armStateToStr = (state) => switch(state) {
+  | Disarm => "disarm"
+  | ArmStay => "armStay"
+  | ArmAway => "armAway"
+}
+
+let intToArmState = (state) => switch(state) {
+  | 1 => Disarm
+  | 2 => ArmStay
+  | 3 => ArmAway
+  | _ => raise(Not_found)
+}
+
 let userAgent = "initialxy-frontpoint-scheduler";
 let loginURL = "https://my.frontpointsecurity.com/login";
 let tokenURL = "https://my.frontpointsecurity.com/api/Login/token";
 let redirectURL = "https://my.frontpointsecurity.com/api/Account/AdcRedirectUrl";
 let identitiesURL = "https://www.alarm.com/web/api/identities";
+let systemsURL = "https://www.alarm.com/web/api/systems/systems"
+let partitionsURL = "https://www.alarm.com/web/api/devices/partitions/"
 let alarmHomeURL = "https://www.alarm.com/web/system/home";
 let contentType = "application/json";
 let acceptType = "application/vnd.api+json";
@@ -49,25 +69,23 @@ let genPreprocessResponse = (
   let (meta, body) = response;
   let code = Response.status(meta);
   if (code == `OK || code == `Found) {
-    let cookie = String.concat(
-      "; ",
-      Header.get_multi(Response.headers(meta), "set-cookie"),
-    );
+    let cookie = Header.get_multi(Response.headers(meta), "set-cookie")
+      |> String.concat("; ");
     Cohttp_lwt.Body.to_string(body)
     >>= bodyText => Lwt.return((extra, cookie, bodyText));
   } else {
-    Lwt.fail(Failure("Response failed"));
+    Lwt.fail(Failure("Failed response"));
   }
 }
 
 let genLogin = (userName: string, password: string) : Lwt.t(authInfo) => {
   Client.post(
-    ~headers = Header.of_list([
+    ~headers=Header.of_list([
       ("Content-Type", contentType),
       ("Referer", loginURL),
       ("User-Agent", userAgent),
     ]),
-    ~body = Cohttp_lwt.Body.of_string(Printf.sprintf(
+    ~body=Cohttp_lwt.Body.of_string(Printf.sprintf(
       {|{"Username":"%s","Password":"%s","RememberMe":false}|},
       userName,
       password
@@ -79,14 +97,14 @@ let genLogin = (userName: string, password: string) : Lwt.t(authInfo) => {
     let (_, _, body) = result
     let token = stripQuotes(body);
     Client.post(
-      ~headers = Header.of_list([
+      ~headers=Header.of_list([
         ("Content-Type", contentType),
         ("Cookie", "FPTOKEN=" ++ token),
         ("Authorization", "Bearer " ++ token),
         ("Referer", loginURL),
         ("User-Agent", userAgent),
       ]),
-      ~body = Cohttp_lwt.Body.of_string(
+      ~body=Cohttp_lwt.Body.of_string(
         Printf.sprintf({|{"Href":"%s"}|}, loginURL),
       ),
       Uri.of_string(redirectURL),
@@ -118,15 +136,18 @@ let genLogin = (userName: string, password: string) : Lwt.t(authInfo) => {
   }
 }
 
-let genSystemID = (auth: authInfo) => {
+let getAuthHeaders = (auth: authInfo) => Header.of_list([
+  ("Accept", acceptType),
+  ("Content-Type", contentType),
+  ("Referer", alarmHomeURL),
+  ("User-Agent", userAgent),
+  ("AjaxRequestUniqueKey", auth.afg),
+  ("Cookie", auth.cookie),
+]);
+
+let genSystemID = (auth: authInfo) : Lwt.t(string) => {
   Client.get(
-    ~headers = Header.of_list([
-      ("Accept", acceptType),
-      ("Referer", alarmHomeURL),
-      ("User-Agent", userAgent),
-      ("AjaxRequestUniqueKey", auth.afg),
-      ("Cookie", auth.cookie),
-    ]),
+    ~headers=getAuthHeaders(auth),
     Uri.of_string(identitiesURL),
   )
   >>= genPreprocessResponse(None)
@@ -154,6 +175,76 @@ let genSystemID = (auth: authInfo) => {
   }
 }
 
+let genPartitionID = (auth: authInfo, systemID: string) : Lwt.t(string) => {
+  Client.get(
+    ~headers=getAuthHeaders(auth),
+    Uri.of_string(systemsURL ++ "/" ++ systemID),
+  )
+  >>= genPreprocessResponse(None)
+  >>= result => {
+    let (_, _, body) = result;
+    try ((() => {
+      open Yojson.Basic.Util;
+      let paritionIDs = Yojson.Basic.from_string(body)
+        |> member("data")
+        |> member("relationships")
+        |> member("partitions")
+        |> member("data")
+        |> to_list
+        |> List.map(data => data
+          |> member("id")
+          |> to_string,
+        );
+      Lwt.return(switch (paritionIDs) {
+        | [i, ...x] => i
+        | _ => raise(Not_found)
+      });
+    })()) {
+      | _ => Lwt.fail(Not_found)
+    }
+  }
+}
+
+let genCurrentArmState = (auth: authInfo, partitionID: string)
+  : Lwt.t(armState) => {
+    Client.get(
+      ~headers=getAuthHeaders(auth),
+      Uri.of_string(partitionsURL ++ "/" ++ partitionID),
+    )
+    >>= genPreprocessResponse(None)
+    >>= result => {
+      let (_, _, body) = result;
+      try ((() => {
+        open Yojson.Basic.Util;
+        let state = Yojson.Basic.from_string(body)
+          |> member("data")
+          |> member("attributes")
+          |> member("state")
+          |> to_int
+          |> intToArmState
+        Lwt.return(state);
+      })()) {
+        | _ => Lwt.fail(Not_found)
+      }
+    }
+  }
+
+let genArm = (auth: authInfo, partitionID: string, state: armState)
+  : Lwt.t(unit) => {
+    Client.post(
+      ~headers=getAuthHeaders(auth),
+      Uri.of_string(Printf.sprintf(
+        "%s/%s/%s",
+        partitionsURL,
+        partitionID,
+        armStateToStr(state),
+      )),
+      ~body=Cohttp_lwt.Body.of_string({|{"statePollOnly":false}|}),
+    )
+    >>= genPreprocessResponse(None)
+    >>= _ => Lwt.return();
+  }
+
 let main = () => {
   Console.log("Enter username:");
   let userName = read_line();
@@ -162,24 +253,25 @@ let main = () => {
   Lwt.catch(
     () => {
       genLogin(userName, password)
-      >>= genSystemID
-      >>= systemID => {
-        Console.log(systemID);
-        Lwt.return();
+      >>= auth => {
+        genSystemID(auth)
+        >>= genPartitionID(auth)
+        >>= partitionID => {
+          genCurrentArmState(auth, partitionID)
+          >>= state => {
+            Console.log(state);
+            genArm(auth, partitionID, ArmStay);
+          }
+        }
       }
     },
     e => {
       Lwt.return(switch(e) {
         | Failure(msg) => Console.log(msg);
-        | _ => Console.log("error");
+        | _ => Console.log("Encountered error");
       });
     },
   );
-}
-
-type user = {
-  id: int,
-  name: string,
 }
 
 let () = Lwt_main.run(main());
