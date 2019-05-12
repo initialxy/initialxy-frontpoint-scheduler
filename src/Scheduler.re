@@ -37,6 +37,8 @@ let identitiesURL = "https://www.alarm.com/web/api/identities";
 let systemsURL = "https://www.alarm.com/web/api/systems/systems"
 let partitionsURL = "https://www.alarm.com/web/api/devices/partitions/"
 let alarmHomeURL = "https://www.alarm.com/web/system/home";
+let alarmLogoutURL = "https://www.alarm.com/web/Logout.aspx";
+let frontpointLogoutURL = "https://my.frontpointsecurity.com/login?m=logout";
 let contentType = "application/json";
 let acceptType = "application/vnd.api+json";
 
@@ -136,24 +138,29 @@ let genLogin = (userName: string, password: string) : Lwt.t(authInfo) => {
   }
 }
 
-let getAuthHeaders = (auth: authInfo) => Header.of_list([
+let createGetAuthHeaders = (auth: authInfo) => Header.of_list([
   ("Accept", acceptType),
-  ("Content-Type", contentType),
   ("Referer", alarmHomeURL),
   ("User-Agent", userAgent),
   ("AjaxRequestUniqueKey", auth.afg),
   ("Cookie", auth.cookie),
 ]);
 
+let createPostAuthHeaders = (auth: authInfo) => Header.add(
+  createGetAuthHeaders(auth),
+  "Content-Type",
+  contentType,
+);
+
 let genSystemID = (auth: authInfo) : Lwt.t(string) => {
   Client.get(
-    ~headers=getAuthHeaders(auth),
+    ~headers=createGetAuthHeaders(auth),
     Uri.of_string(identitiesURL),
   )
   >>= genPreprocessResponse(None)
   >>= result => {
     let (_, _, body) = result;
-    try ((() => {
+    try ({
       open Yojson.Basic.Util;
       let systemIDs = Yojson.Basic.from_string(body)
         |> member("data")
@@ -169,7 +176,7 @@ let genSystemID = (auth: authInfo) : Lwt.t(string) => {
         | [i, ...x] => i
         | _ => raise(Not_found)
       });
-    })()) {
+    }) {
       | _ => Lwt.fail(Not_found)
     }
   }
@@ -177,13 +184,13 @@ let genSystemID = (auth: authInfo) : Lwt.t(string) => {
 
 let genPartitionID = (auth: authInfo, systemID: string) : Lwt.t(string) => {
   Client.get(
-    ~headers=getAuthHeaders(auth),
+    ~headers=createGetAuthHeaders(auth),
     Uri.of_string(systemsURL ++ "/" ++ systemID),
   )
   >>= genPreprocessResponse(None)
   >>= result => {
     let (_, _, body) = result;
-    try ((() => {
+    try ({
       open Yojson.Basic.Util;
       let paritionIDs = Yojson.Basic.from_string(body)
         |> member("data")
@@ -199,7 +206,7 @@ let genPartitionID = (auth: authInfo, systemID: string) : Lwt.t(string) => {
         | [i, ...x] => i
         | _ => raise(Not_found)
       });
-    })()) {
+    }) {
       | _ => Lwt.fail(Not_found)
     }
   }
@@ -208,13 +215,13 @@ let genPartitionID = (auth: authInfo, systemID: string) : Lwt.t(string) => {
 let genCurrentArmState = (auth: authInfo, partitionID: string)
   : Lwt.t(armState) => {
     Client.get(
-      ~headers=getAuthHeaders(auth),
+      ~headers=createGetAuthHeaders(auth),
       Uri.of_string(partitionsURL ++ "/" ++ partitionID),
     )
     >>= genPreprocessResponse(None)
     >>= result => {
       let (_, _, body) = result;
-      try ((() => {
+      try ({
         open Yojson.Basic.Util;
         let state = Yojson.Basic.from_string(body)
           |> member("data")
@@ -223,7 +230,7 @@ let genCurrentArmState = (auth: authInfo, partitionID: string)
           |> to_int
           |> intToArmState
         Lwt.return(state);
-      })()) {
+      }) {
         | _ => Lwt.fail(Not_found)
       }
     }
@@ -232,7 +239,7 @@ let genCurrentArmState = (auth: authInfo, partitionID: string)
 let genArm = (auth: authInfo, partitionID: string, state: armState)
   : Lwt.t(unit) => {
     Client.post(
-      ~headers=getAuthHeaders(auth),
+      ~headers=createPostAuthHeaders(auth),
       Uri.of_string(Printf.sprintf(
         "%s/%s/%s",
         partitionsURL,
@@ -244,6 +251,25 @@ let genArm = (auth: authInfo, partitionID: string, state: armState)
     >>= genPreprocessResponse(None)
     >>= _ => Lwt.return();
   }
+
+let genLogout = (auth: authInfo) : Lwt.t(unit) => {
+  Client.get(
+    ~headers=createGetAuthHeaders(auth),
+    Uri.of_string(alarmLogoutURL),
+  )
+  >>= genPreprocessResponse(None)
+  >>= _ => Client.get(
+    ~headers=Header.of_list([
+      ("Accept", "text/html"),
+      ("Cookie", "FPTOKEN=" ++ auth.token),
+      ("Referer", alarmHomeURL),
+      ("User-Agent", userAgent),
+    ]),
+    Uri.of_string(frontpointLogoutURL),
+  )
+  >>= genPreprocessResponse(None)
+  >>= _ => Lwt.return();
+}
 
 let main = () => {
   Console.log("Enter username:");
@@ -262,6 +288,7 @@ let main = () => {
             Console.log(state);
             genArm(auth, partitionID, ArmStay);
           }
+          >>= () => genLogout(auth)
         }
       }
     },
