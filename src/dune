@@ -1,4 +1,5 @@
 (executable
-  (name FrontpointUnofficialAPI)
+  (name Scheduler)
+  (modules Scheduler FrontpointUnofficialAPI)
   (public_name Scheduler)
   (libraries str console.lib cohttp lwt cohttp-lwt-unix sqlite3 yojson))
