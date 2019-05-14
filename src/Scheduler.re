@@ -6,29 +6,16 @@ let main = () => {
   let userName = read_line();
   Console.log("Enter password:");
   let password = readPassword();
-  Lwt.catch(
-    () => {
-      genLogin(userName, password)
-      >>= auth => {
-        genSystemID(auth)
-        >>= genPartitionID(auth)
-        >>= partitionID => {
-          genCurrentArmState(auth, partitionID)
-          >>= state => {
-            Console.log(state);
-            genArm(auth, partitionID, ArmStay);
-          }
-          >>= () => genLogout(auth)
-        }
-      }
-    },
-    e => {
-      Lwt.return(switch(e) {
-        | Failure(msg) => Console.log(msg);
-        | _ => Console.log("Encountered error");
-      });
-    },
-  );
+  try%lwt({
+    let%lwt auth = genLogin(userName, password);
+    let%lwt partitionID = genSystemID(auth) >>= genPartitionID(auth);
+    let%lwt currentState = genCurrentArmState(auth, partitionID)
+    Console.log(currentState);
+    genArm(auth, partitionID, ArmStay) >>= () => genLogout(auth);
+  }) {
+    | Failure(msg) => Lwt.return(Console.log(msg));
+    | _ => Lwt.return(Console.log("Encountered error"));
+  }
 }
 
 let () = Lwt_main.run(main());
