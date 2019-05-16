@@ -1,4 +1,5 @@
 open Lwt;
+open CalendarLib;
 
 type schedulerEvent =
   | TriggerAction
@@ -63,3 +64,15 @@ let test = () => {
     | _ => Lwt.return(Console.log("Encountered error"));
   }
 }
+
+let getTimeOfNextDay = (refTime: float, hourOfDay: int, minuteOfDay: int)
+  : float => {
+    let t = Unix.gmtime(Unix.time());
+    let c = Calendar.from_unixtm(t);
+    let c = Calendar.add(c, Calendar.Period.day(1));
+    let t = Calendar.to_unixtm(c);
+    let (ts, _) = Unix.mktime(
+      {...t, tm_hour: hourOfDay, tm_min: minuteOfDay, tm_sec: 0},
+    );
+    ts
+  }

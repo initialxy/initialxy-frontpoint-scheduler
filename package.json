@@ -16,6 +16,7 @@
   "license": "MIT",
   "dependencies": {
     "@esy-ocaml/reason": ">= 3.4.0 < 3.5.0",
+    "@opam/calendar": "2.04",
     "@opam/caqti": "1.1.0",
     "@opam/caqti-driver-sqlite3": "1.0.0",
     "@opam/caqti-lwt": "1.0.0",
