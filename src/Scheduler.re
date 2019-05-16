@@ -1,5 +1,6 @@
 open FrontpointUnofficialAPI;
 open Lwt;
+open StorageManager;
 
 let main = () => {
   Console.log("Enter username:");

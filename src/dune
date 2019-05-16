@@ -1,6 +1,17 @@
 (executable
   (name Scheduler)
-  (modules Scheduler FrontpointUnofficialAPI)
+  (modules Scheduler FrontpointUnofficialAPI StorageManager)
   (preprocess (pps lwt_ppx))
   (public_name Scheduler)
-  (libraries str console.lib cohttp lwt cohttp-lwt-unix sqlite3 yojson))
+  (libraries
+    str
+    console.lib
+    cohttp
+    lwt
+    cohttp-lwt-unix
+    yojson
+    caqti
+    caqti-lwt
+    caqti-driver-sqlite3
+    fpath
+  ))
