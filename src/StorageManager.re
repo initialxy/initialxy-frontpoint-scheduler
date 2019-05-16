@@ -45,17 +45,17 @@ let createTriggerTable = {|
 let createScheduleIndex = {|
   CREATE UNIQUE INDEX IF NOT EXISTS schedule_time_of_day
     ON schedule (time_of_day);
-|}
+|};
 
 let createTriggerIndex = {|
   CREATE INDEX IF NOT EXISTS trigger_ts ON trigger (ts);
-|}
+|};
 
 let stripQuery = (query: string): string =>
   Str.global_replace(Str.regexp("\n"), "", query);
 
 let makeExecQuery = (query: string) =>
-  Caqti_request.exec(Caqti_type.unit, stripQuery(query))
+  Caqti_request.exec(Caqti_type.unit, stripQuery(query));
 
 let getNextTimeOfDay = (refTs: float, hourOfDay: int, minuteOfDay: int)
   : float => {
@@ -72,7 +72,7 @@ let getNextTimeOfDay = (refTs: float, hourOfDay: int, minuteOfDay: int)
       let (nextTs, _) = Unix.mktime(
         {...t, tm_hour: hourOfDay, tm_min: minuteOfDay, tm_sec: 0},
       );
-      nextTs
+      nextTs;
     }
   }
 
@@ -87,13 +87,13 @@ let rec getProjectPathRec = (curPath: Fpath.t): Fpath.t => {
 let getProjectPath = () : Fpath.t => Sys.argv[0]
   |> Fpath.v
   |> Fpath.parent
-  |> getProjectPathRec
+  |> getProjectPathRec;
 
 let getDBFilePath = () : string => {
   let projectPath = getProjectPath();
   "schedule.db"
     |> Fpath.add_seg(projectPath)
-    |> Fpath.to_string
+    |> Fpath.to_string;
 }
 
 let genDBConnection = (): Lwt.t(Caqti_lwt.connection) => {
