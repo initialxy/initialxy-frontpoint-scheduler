@@ -14,6 +14,8 @@ let schedulerEventToStr = (event) => switch(event) {
   | Error => "Error"
 }
 
+let projectFolder = "initialxy-frontpoint-scheduler";
+
 let createLogTable = {|
   CREATE TABLE IF NOT EXISTS log (
     id INTEGER NOT NULL PRIMARY KEY,
@@ -42,19 +44,48 @@ let createTriggerTable = {|
   CREATE INDEX trigger_ts ON trigger (ts);
 |};
 
+let getNextTimeOfDay = (refTs: float, hourOfDay: int, minuteOfDay: int)
+  : float => {
+    let t = Unix.gmtime(refTs);
+    let (nextTs, _) = Unix.mktime(
+      {...t, tm_hour: hourOfDay, tm_min: minuteOfDay, tm_sec: 0},
+    );
+    if (nextTs > refTs) {
+      nextTs;
+    } else {
+      let c = Calendar.from_unixtm(t);
+      let c = Calendar.add(c, Calendar.Period.day(1));
+      let t = Calendar.to_unixtm(c);
+      let (nextTs, _) = Unix.mktime(
+        {...t, tm_hour: hourOfDay, tm_min: minuteOfDay, tm_sec: 0},
+      );
+      nextTs
+    }
+  }
+
+let rec getProjectPathRec = (curPath: Fpath.t) : Fpath.t => {
+  if (Fpath.basename(curPath) == projectFolder || Fpath.is_root(curPath)) {
+    curPath;
+  } else {
+    getProjectPathRec(Fpath.parent(curPath));
+  }
+}
+
+let getProjectPath = () : Fpath.t => Sys.argv[0]
+  |> Fpath.v
+  |> Fpath.parent
+  |> getProjectPathRec
+
+let getDBFilePath = () : string => {
+  let projectPath = getProjectPath();
+  "schedule.db"
+    |> Fpath.add_seg(projectPath)
+    |> Fpath.to_string
+}
+
 let test = () => {
   try%lwt({
-    let dir = Sys.argv[0]
-      |> Fpath.v
-      |> Fpath.parent
-      |> Fpath.parent
-      |> Fpath.parent
-      |> Fpath.parent
-      |> Fpath.parent
-      |> Fpath.parent
-      |> Fpath.parent;
-    let dbPath = Fpath.add_seg(dir, "schedule.db");
-    let uri = Uri.of_string("sqlite3://" ++ Fpath.to_string(dbPath));
+    let uri = Uri.of_string("sqlite3://" ++ getDBFilePath());
     let%lwt conn = Caqti_lwt.connect(uri) >>= Caqti_lwt.or_fail;
     let req = Caqti_request.exec(Caqti_type.unit, createLogTable);
     let (module C) = conn;
@@ -64,15 +95,3 @@ let test = () => {
     | _ => Lwt.return(Console.log("Encountered error"));
   }
 }
-
-let getTimeOfNextDay = (refTime: float, hourOfDay: int, minuteOfDay: int)
-  : float => {
-    let t = Unix.gmtime(Unix.time());
-    let c = Calendar.from_unixtm(t);
-    let c = Calendar.add(c, Calendar.Period.day(1));
-    let t = Calendar.to_unixtm(c);
-    let (ts, _) = Unix.mktime(
-      {...t, tm_hour: hourOfDay, tm_min: minuteOfDay, tm_sec: 0},
-    );
-    ts
-  }
