@@ -31,7 +31,6 @@ let createScheduleTable = {|
     time_of_day TEXT NOT NULL,
     action TEXT NOT NULL
   );
-  CREATE UNIQUE INDEX schedule_time_of_day ON schedule (time_of_day);
 |};
 
 let createTriggerTable = {|
@@ -41,8 +40,22 @@ let createTriggerTable = {|
     schedule_id INTEGER NOT NULL,
     action TEXT NOT NULL
   );
-  CREATE INDEX trigger_ts ON trigger (ts);
 |};
+
+let createScheduleIndex = {|
+  CREATE UNIQUE INDEX IF NOT EXISTS schedule_time_of_day
+    ON schedule (time_of_day);
+|}
+
+let createTriggerIndex = {|
+  CREATE INDEX IF NOT EXISTS trigger_ts ON trigger (ts);
+|}
+
+let stripQuery = (query: string) : string =>
+  Str.global_replace(Str.regexp("\n"), "", query);
+
+let makeExecQuery = (query: string) =>
+  Caqti_request.exec(Caqti_type.unit, stripQuery(query))
 
 let getNextTimeOfDay = (refTs: float, hourOfDay: int, minuteOfDay: int)
   : float => {
@@ -83,15 +96,19 @@ let getDBFilePath = () : string => {
     |> Fpath.to_string
 }
 
-let test = () => {
-  try%lwt({
-    let uri = Uri.of_string("sqlite3://" ++ getDBFilePath());
-    let%lwt conn = Caqti_lwt.connect(uri) >>= Caqti_lwt.or_fail;
-    let req = Caqti_request.exec(Caqti_type.unit, createLogTable);
-    let (module C) = conn;
-    C.exec(req, ()) >>= Caqti_lwt.or_fail
-  }) {
-    | Failure(msg) => Lwt.return(Console.log(msg));
-    | _ => Lwt.return(Console.log("Encountered error"));
-  }
+let genDBConnection = () : Lwt.t(Caqti_lwt.connection) => {
+  let uri = Uri.of_string("sqlite3://" ++ getDBFilePath());
+  let%lwt conn = Caqti_lwt.connect(uri) >>= Caqti_lwt.or_fail;
+  let (module C) = conn;
+  let%lwt _ = C.exec(makeExecQuery(createLogTable), ())
+    >>= Caqti_lwt.or_fail
+    >>= () => C.exec(makeExecQuery(createScheduleTable), ())
+    >>= Caqti_lwt.or_fail
+    >>= () => C.exec(makeExecQuery(createTriggerTable), ())
+    >>= Caqti_lwt.or_fail
+    >>= () => C.exec(makeExecQuery(createScheduleIndex), ())
+    >>= Caqti_lwt.or_fail
+    >>= () => C.exec(makeExecQuery(createTriggerIndex), ())
+    >>= Caqti_lwt.or_fail;
+  return(conn);
 }
