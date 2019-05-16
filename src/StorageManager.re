@@ -51,7 +51,7 @@ let createTriggerIndex = {|
   CREATE INDEX IF NOT EXISTS trigger_ts ON trigger (ts);
 |}
 
-let stripQuery = (query: string) : string =>
+let stripQuery = (query: string): string =>
   Str.global_replace(Str.regexp("\n"), "", query);
 
 let makeExecQuery = (query: string) =>
@@ -76,7 +76,7 @@ let getNextTimeOfDay = (refTs: float, hourOfDay: int, minuteOfDay: int)
     }
   }
 
-let rec getProjectPathRec = (curPath: Fpath.t) : Fpath.t => {
+let rec getProjectPathRec = (curPath: Fpath.t): Fpath.t => {
   if (Fpath.basename(curPath) == projectFolder || Fpath.is_root(curPath)) {
     curPath;
   } else {
@@ -96,7 +96,7 @@ let getDBFilePath = () : string => {
     |> Fpath.to_string
 }
 
-let genDBConnection = () : Lwt.t(Caqti_lwt.connection) => {
+let genDBConnection = (): Lwt.t(Caqti_lwt.connection) => {
   let uri = Uri.of_string("sqlite3://" ++ getDBFilePath());
   let%lwt conn = Caqti_lwt.connect(uri) >>= Caqti_lwt.or_fail;
   let (module C) = conn;

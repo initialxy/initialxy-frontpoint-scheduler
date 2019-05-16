@@ -14,8 +14,8 @@ let main = () => {
     Console.log(currentState);
     genArm(auth, partitionID, ArmStay) >>= () => genLogout(auth);
   }) {
-    | Failure(msg) => Lwt.return(Console.log(msg));
-    | _ => Lwt.return(Console.log("Encountered error"));
+    | Failure(msg) => return(Console.log(msg));
+    | _ => return(Console.log("Encountered error"));
   }
 }
 

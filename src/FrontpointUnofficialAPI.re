@@ -7,7 +7,7 @@ open Yojson;
 type authInfo = {
   afg: string,
   cookie: string,
-  token: string
+  token: string,
 }
 
 type armState =
@@ -66,20 +66,20 @@ let stripQuotes = quotedStr => {
 let genPreprocessResponse = (
   extra: option('a),
   response: (Response.t, Cohttp_lwt.Body.t),
-) : Lwt.t((option('a), string, string)) => {
+): Lwt.t((option('a), string, string)) => {
   let (meta, body) = response;
   let code = Response.status(meta);
   if (code == `OK || code == `Found) {
     let cookie = Header.get_multi(Response.headers(meta), "set-cookie")
       |> String.concat("; ");
     Cohttp_lwt.Body.to_string(body)
-    >>= bodyText => Lwt.return((extra, cookie, bodyText));
+    >>= bodyText => return((extra, cookie, bodyText));
   } else {
-    Lwt.fail(Failure("Failed response"));
+    fail(Failure("Failed response"));
   }
 }
 
-let genLogin = (userName: string, password: string) : Lwt.t(authInfo) => {
+let genLogin = (userName: string, password: string): Lwt.t(authInfo) => {
   Client.post(
     ~headers=Header.of_list([
       ("Content-Type", contentType),
@@ -127,12 +127,12 @@ let genLogin = (userName: string, password: string) : Lwt.t(authInfo) => {
       }
       if (Str.string_match(Str.regexp({|.*\bafg=\([^;]+\);.*|}), cookie, 0)) {
         let afg = Str.matched_group(1, cookie);
-        Lwt.return({afg: afg, cookie: cookie, token: tokenText});
+        return({afg: afg, cookie: cookie, token: tokenText});
       } else {
-        Lwt.fail(Failure("afg not found in cookie"));
+        fail(Failure("afg not found in cookie"));
       }
     } else {
-      Lwt.fail(Failure("Token not found"));
+      fail(Failure("Token not found"));
     }
   }
 }
@@ -151,7 +151,7 @@ let createPostAuthHeaders = (auth: authInfo) => Header.add(
   contentType,
 );
 
-let genSystemID = (auth: authInfo) : Lwt.t(string) => {
+let genSystemID = (auth: authInfo): Lwt.t(string) => {
   Client.get(
     ~headers=createGetAuthHeaders(auth),
     Uri.of_string(identitiesURL),
@@ -171,17 +171,17 @@ let genSystemID = (auth: authInfo) : Lwt.t(string) => {
           |> member("id")
           |> to_string,
         );
-      Lwt.return(switch (systemIDs) {
+      return(switch (systemIDs) {
         | [i, ...x] => i
         | _ => raise(Not_found)
       });
     }) {
-      | _ => Lwt.fail(Not_found)
+      | _ => fail(Not_found)
     }
   }
 }
 
-let genPartitionID = (auth: authInfo, systemID: string) : Lwt.t(string) => {
+let genPartitionID = (auth: authInfo, systemID: string): Lwt.t(string) => {
   Client.get(
     ~headers=createGetAuthHeaders(auth),
     Uri.of_string(systemsURL ++ "/" ++ systemID),
@@ -201,12 +201,12 @@ let genPartitionID = (auth: authInfo, systemID: string) : Lwt.t(string) => {
           |> member("id")
           |> to_string,
         );
-      Lwt.return(switch (paritionIDs) {
+      return(switch (paritionIDs) {
         | [i, ...x] => i
         | _ => raise(Not_found)
       });
     }) {
-      | _ => Lwt.fail(Not_found)
+      | _ => fail(Not_found)
     }
   }
 }
@@ -228,9 +228,9 @@ let genCurrentArmState = (auth: authInfo, partitionID: string)
           |> member("state")
           |> to_int
           |> intToArmState
-        Lwt.return(state);
+        return(state);
       }) {
-        | _ => Lwt.fail(Not_found)
+        | _ => fail(Not_found)
       }
     }
   }
@@ -248,10 +248,10 @@ let genArm = (auth: authInfo, partitionID: string, state: armState)
       ~body=Cohttp_lwt.Body.of_string({|{"statePollOnly":false}|}),
     )
     >>= genPreprocessResponse(None)
-    >>= _ => Lwt.return();
+    >>= _ => return();
   }
 
-let genLogout = (auth: authInfo) : Lwt.t(unit) => {
+let genLogout = (auth: authInfo): Lwt.t(unit) => {
   Client.get(
     ~headers=createGetAuthHeaders(auth),
     Uri.of_string(alarmLogoutURL),
@@ -267,5 +267,5 @@ let genLogout = (auth: authInfo) : Lwt.t(unit) => {
     Uri.of_string(frontpointLogoutURL),
   )
   >>= genPreprocessResponse(None)
-  >>= _ => Lwt.return();
+  >>= _ => return();
 }
