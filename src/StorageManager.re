@@ -1,5 +1,6 @@
 open Lwt;
 open CalendarLib;
+open FrontpointUnofficialAPI;
 
 type schedulerEvent =
   | TriggerAction
@@ -12,6 +13,12 @@ let schedulerEventToStr = (event) => switch(event) {
   | ActionSuccess => "ActionSuccess"
   | ActionFail => "ActionFail"
   | Error => "Error"
+}
+
+type trigger = {
+  ts: float,
+  scheduleID: int64,
+  action: armState,
 }
 
 let projectFolder = "initialxy-frontpoint-scheduler";
@@ -42,13 +49,18 @@ let createTriggerTable = {|
   );
 |};
 
-let createScheduleIndex = {|
+let createScheduleTimeOfDayIndex = {|
   CREATE UNIQUE INDEX IF NOT EXISTS schedule_time_of_day
     ON schedule (time_of_day);
 |};
 
-let createTriggerIndex = {|
+let createTriggerTsIndex = {|
   CREATE INDEX IF NOT EXISTS trigger_ts ON trigger (ts);
+|};
+
+let createTriggerScheduleIDIndex = {|
+  CREATE UNIQUE INDEX IF NOT EXISTS trigger_schedule_id
+    ON trigger (schedule_id);
 |};
 
 let stripQuery = (query: string): string =>
@@ -100,15 +112,96 @@ let genDBConnection = (): Lwt.t(Caqti_lwt.connection) => {
   let uri = Uri.of_string("sqlite3://" ++ getDBFilePath());
   let%lwt conn = Caqti_lwt.connect(uri) >>= Caqti_lwt.or_fail;
   let (module C) = conn;
-  let%lwt _ = C.exec(makeExecQuery(createLogTable), ())
+  return(conn);
+}
+
+let genInitTables = (): Lwt.t(unit) => {
+  let%lwt (module C) = genDBConnection();
+  C.exec(makeExecQuery(createLogTable), ())
     >>= Caqti_lwt.or_fail
     >>= () => C.exec(makeExecQuery(createScheduleTable), ())
     >>= Caqti_lwt.or_fail
     >>= () => C.exec(makeExecQuery(createTriggerTable), ())
     >>= Caqti_lwt.or_fail
-    >>= () => C.exec(makeExecQuery(createScheduleIndex), ())
+    >>= () => C.exec(makeExecQuery(createScheduleTimeOfDayIndex), ())
     >>= Caqti_lwt.or_fail
-    >>= () => C.exec(makeExecQuery(createTriggerIndex), ())
-    >>= Caqti_lwt.or_fail;
-  return(conn);
+    >>= () => C.exec(makeExecQuery(createTriggerTsIndex), ())
+    >>= Caqti_lwt.or_fail
+    >>= () => C.exec(makeExecQuery(createTriggerScheduleIDIndex), ())
+    >>= Caqti_lwt.or_fail
+    >>= () => C.disconnect();
 }
+
+let genLog = (refTs: float, event: schedulerEvent, message: string)
+  : Lwt.t(unit) => {
+    let%lwt (module C) = genDBConnection();
+    let query = Caqti_request.exec(
+      Caqti_type.(tup3(int64, string, string)),
+      "INSERT INTO log (ts, event, message) VALUES (?, ?, ?);",
+    );
+    C.exec(query, (Int64.of_float(refTs), schedulerEventToStr(event), message))
+      >>= Caqti_lwt.or_fail
+      >>= () => C.disconnect();
+  }
+
+let genTriggers = (): Lwt.t(list(trigger)) => {
+  let%lwt (module C) = genDBConnection();
+  let query = Caqti_request.collect(
+    Caqti_type.unit,
+    Caqti_type.(tup3(int64, int64, string)),
+    "SELECT ts, schedule_id, action FROM trigger ORDER BY ts;",
+  );
+  let%lwt res = C.collect_list(query, ()) >>= Caqti_lwt.or_fail;
+  let%lwt _ = C.disconnect();
+  return(List.map(row => {
+    let (ts, id, action) = row;
+    {ts: Int64.to_float(ts), scheduleID: id, action: strToArmState(action)};
+  }, res));
+}
+
+let getTimeOfDayFromStr = (timeStr: string): (int, int) => {
+  if (Str.string_match(Str.regexp({|^\(\d\d\)\(\d\d\)$|}), timeStr, 0)) {
+    (
+      int_of_string(Str.matched_group(1, timeStr)),
+      int_of_string(Str.matched_group(1, timeStr)),
+    );
+  } else {
+    raise(Failure("Given time string, " ++ timeStr ++ ", is in wrong format"));
+  }
+}
+
+let genUpdateTriggers = (refTs: float, ids: list(int64)): Lwt.t(unit) => {
+  let rawSearchQuery = ids
+    |> List.map(id => Int64.to_string(id))
+    |> String.concat(", ")
+    |> Printf.sprintf({|
+      SELECT schedule.id, schedule.time_of_day, schedule.action
+      FROM trigger t join scheduel s ON t.schedule_id = s.id
+      WHERE id IN (%s);
+    |});
+  let%lwt (module C) = genDBConnection();
+  let query = Caqti_request.collect(
+    Caqti_type.unit,
+    Caqti_type.(tup3(int64, string, string)),
+    stripQuery(rawSearchQuery),
+  );
+  let%lwt res = C.collect_list(query, ()) >>= Caqti_lwt.or_fail;
+  let newTriggerValues = List.map(
+    row => {
+      let (id, timeOfDay, action) = row;
+      let (hour, minute) = getTimeOfDayFromStr(timeOfDay);
+      (Int64.of_float(getNextTimeOfDay(refTs, hour, minute)), id, action);
+    },
+    res,
+  );
+  let rawDeleteQuery = ids
+    |> List.map(id => Int64.to_string(id))
+    |> String.concat(", ")
+    |> Printf.sprintf("DELETE FROM trigger WHERE id IN (%s);");
+  let query = Caqti_request.exec(Caqti_type.unit, rawDeleteQuery);
+  C.exec(query, ()) >>= Caqti_lwt.or_fail >>= () => C.disconnect();
+}
+
+let genAddSchedule = () => {}
+
+let genRemoveSchedule = () => {}

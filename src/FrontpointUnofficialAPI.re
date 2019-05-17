@@ -16,9 +16,16 @@ type armState =
   | ArmAway
 
 let armStateToStr = (state) => switch(state) {
-  | Disarm => "disarm"
-  | ArmStay => "armStay"
-  | ArmAway => "armAway"
+  | Disarm => "Disarm"
+  | ArmStay => "ArmStay"
+  | ArmAway => "ArmAway"
+}
+
+let strToArmState = (state) => switch(state) {
+  | "Disarm" => Disarm 
+  | "ArmStay" => ArmStay
+  | "ArmAway" => ArmAway
+  | _ => raise(Not_found)
 }
 
 let intToArmState = (state) => switch(state) {
