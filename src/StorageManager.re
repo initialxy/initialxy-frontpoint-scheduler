@@ -15,7 +15,14 @@ let schedulerEventToStr = (event) => switch(event) {
   | Error => "Error"
 }
 
+type schedule = {
+  id: int64,
+  timeOfDay: string,
+  action: armState,
+}
+
 type trigger = {
+  id: int64,
   ts: float,
   scheduleID: int64,
   action: armState,
@@ -164,14 +171,19 @@ let genTriggers = (): Lwt.t(list(trigger)) => {
   let%lwt (module C) = genDBConnection();
   let query = Caqti_request.collect(
     Caqti_type.unit,
-    Caqti_type.(tup3(int64, int64, string)),
-    "SELECT ts, schedule_id, action FROM trigger ORDER BY ts;",
+    Caqti_type.(tup4(int64, int64, int64, string)),
+    "SELECT id, ts, schedule_id, action FROM trigger ORDER BY ts;",
   );
   let%lwt res = C.collect_list(query, ()) >>= Caqti_lwt.or_fail;
   let%lwt _ = C.disconnect();
   return(List.map(row => {
-    let (ts, id, action) = row;
-    {ts: Int64.to_float(ts), scheduleID: id, action: strToArmState(action)};
+    let (id, ts, scheduleID, action) = row;
+    {
+      id: id,
+      ts: Int64.to_float(ts),
+      scheduleID: scheduleID,
+      action: strToArmState(action),
+    };
   }, res));
 }
 
@@ -186,7 +198,10 @@ let getTimeOfDayFromStr = (timeStr: string): (int, int) => {
   }
 }
 
-let genUpdateTriggers = (refTs: float, ids: list(int64)): Lwt.t(unit) => {
+let genUpdateTriggers = (
+  refTs: float,
+  ids: list(int64),
+): Lwt.t(list(trigger)) => {
   let rawSearchQuery = ids
     |> List.map(id => Int64.to_string(id))
     |> String.concat(", ")
@@ -229,7 +244,26 @@ let genUpdateTriggers = (refTs: float, ids: list(int64)): Lwt.t(unit) => {
     |> String.concat(", ")
     |> Printf.sprintf("DELETE FROM trigger WHERE id IN (%s);");
   let query = Caqti_request.exec(Caqti_type.unit, rawDeleteQuery);
-  C.exec(query, ()) >>= Caqti_lwt.or_fail >>= () => C.disconnect();
+  let%lwt triggers = C.exec(query, ())
+    >>= Caqti_lwt.or_fail
+    >>= () => genTriggers();
+  let%lwt _ = C.disconnect();
+  return(triggers);
+}
+
+let genSchedules = (): Lwt.t(list(schedule)) => {
+  let%lwt (module C) = genDBConnection();
+  let query = Caqti_request.collect(
+    Caqti_type.unit,
+    Caqti_type.(tup3(int64, string, string)),
+    "SELECT id, time_of_day, action FROM schedule ORDER BY time_of_day;",
+  );
+  let%lwt res = C.collect_list(query, ()) >>= Caqti_lwt.or_fail;
+  let%lwt _ = C.disconnect();
+  return(List.map(row => {
+    let (id, timeOfDay, action) = row;
+    {id: id, timeOfDay: timeOfDay, action: strToArmState(action)};
+  }, res));
 }
 
 let genAddSchedule = () => {}
