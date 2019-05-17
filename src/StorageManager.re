@@ -27,6 +27,7 @@ let createLogTable = {|
   CREATE TABLE IF NOT EXISTS log (
     id INTEGER NOT NULL PRIMARY KEY,
     ts INTEGER NOT NULL,
+    ref_ts INTEGER NOT NULL,
     event TEXT NOT NULL,
     message TEXT NOT NULL
   );
@@ -47,6 +48,11 @@ let createTriggerTable = {|
     schedule_id INTEGER NOT NULL,
     action TEXT NOT NULL
   );
+|};
+
+let createLogTsIndex = {|
+  CREATE INDEX IF NOT EXISTS log_ts
+    ON log (ts);
 |};
 
 let createScheduleTimeOfDayIndex = {|
@@ -123,6 +129,8 @@ let genInitTables = (): Lwt.t(unit) => {
     >>= Caqti_lwt.or_fail
     >>= () => C.exec(makeExecQuery(createTriggerTable), ())
     >>= Caqti_lwt.or_fail
+    >>= () => C.exec(makeExecQuery(createLogTsIndex), ())
+    >>= Caqti_lwt.or_fail
     >>= () => C.exec(makeExecQuery(createScheduleTimeOfDayIndex), ())
     >>= Caqti_lwt.or_fail
     >>= () => C.exec(makeExecQuery(createTriggerTsIndex), ())
@@ -139,12 +147,17 @@ let genLog = (
 ): Lwt.t(unit) => {
   let%lwt (module C) = genDBConnection();
   let query = Caqti_request.exec(
-    Caqti_type.(tup3(int64, string, string)),
-    "INSERT INTO log (ts, event, message) VALUES (?, ?, ?);",
+    Caqti_type.(tup4(int64, int64, string, string)),
+    "INSERT INTO log (ts, ref_ts, event, message) VALUES (?, ?, ?, ?);",
   );
-  C.exec(query, (Int64.of_float(refTs), schedulerEventToStr(event), message))
-    >>= Caqti_lwt.or_fail
-    >>= () => C.disconnect();
+  C.exec(query, (
+    Int64.of_float(Unix.time()),
+    Int64.of_float(refTs),
+    schedulerEventToStr(event),
+    message,
+  ))
+  >>= Caqti_lwt.or_fail
+  >>= () => C.disconnect();
 }
 
 let genTriggers = (): Lwt.t(list(trigger)) => {
@@ -196,6 +209,20 @@ let genUpdateTriggers = (refTs: float, ids: list(int64)): Lwt.t(unit) => {
       (Int64.of_float(getNextTimeOfDay(refTs, hour, minute)), id, action);
     },
     res,
+  );
+  let insertTriggerQuery = Caqti_request.exec(
+    Caqti_type.(tup3(int64, int64, string)),
+    "INSERT INTO trigger (ts, schedule_id, action) VALUES (?, ?, ?);",
+  );
+  let%lwt _ = List.fold_left(
+    (acc, values) => {
+      let (ts, id, action) = values;
+      acc
+        >>= () => C.exec(insertTriggerQuery, (ts, id, action))
+        >>= Caqti_lwt.or_fail;
+    },
+    return(),
+    newTriggerValues,
   );
   let rawDeleteQuery = ids
     |> List.map(id => Int64.to_string(id))
