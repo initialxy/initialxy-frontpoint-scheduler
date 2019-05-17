@@ -218,45 +218,50 @@ let genPartitionID = (auth: authInfo, systemID: string): Lwt.t(string) => {
   }
 }
 
-let genCurrentArmState = (auth: authInfo, partitionID: string)
-  : Lwt.t(armState) => {
-    Client.get(
-      ~headers=createGetAuthHeaders(auth),
-      Uri.of_string(partitionsURL ++ "/" ++ partitionID),
-    )
-    >>= genPreprocessResponse(None)
-    >>= result => {
-      let (_, _, body) = result;
-      try ({
-        open Yojson.Basic.Util;
-        let state = Yojson.Basic.from_string(body)
-          |> member("data")
-          |> member("attributes")
-          |> member("state")
-          |> to_int
-          |> intToArmState
-        return(state);
-      }) {
-        | _ => fail(Not_found)
-      }
+let genCurrentArmState = (
+  auth: authInfo,
+  partitionID: string,
+): Lwt.t(armState) => {
+  Client.get(
+    ~headers=createGetAuthHeaders(auth),
+    Uri.of_string(partitionsURL ++ "/" ++ partitionID),
+  )
+  >>= genPreprocessResponse(None)
+  >>= result => {
+    let (_, _, body) = result;
+    try ({
+      open Yojson.Basic.Util;
+      let state = Yojson.Basic.from_string(body)
+        |> member("data")
+        |> member("attributes")
+        |> member("state")
+        |> to_int
+        |> intToArmState
+      return(state);
+    }) {
+      | _ => fail(Not_found)
     }
   }
+}
 
-let genArm = (auth: authInfo, partitionID: string, state: armState)
-  : Lwt.t(unit) => {
-    Client.post(
-      ~headers=createPostAuthHeaders(auth),
-      Uri.of_string(Printf.sprintf(
-        "%s/%s/%s",
-        partitionsURL,
-        partitionID,
-        armStateToStr(state),
-      )),
-      ~body=Cohttp_lwt.Body.of_string({|{"statePollOnly":false}|}),
-    )
-    >>= genPreprocessResponse(None)
-    >>= _ => return();
-  }
+let genArm = (
+  auth: authInfo,
+  partitionID: string,
+  state: armState,
+): Lwt.t(unit) => {
+  Client.post(
+    ~headers=createPostAuthHeaders(auth),
+    Uri.of_string(Printf.sprintf(
+      "%s/%s/%s",
+      partitionsURL,
+      partitionID,
+      armStateToStr(state),
+    )),
+    ~body=Cohttp_lwt.Body.of_string({|{"statePollOnly":false}|}),
+  )
+  >>= genPreprocessResponse(None)
+  >>= _ => return();
+}
 
 let genLogout = (auth: authInfo): Lwt.t(unit) => {
   Client.get(

@@ -69,24 +69,27 @@ let stripQuery = (query: string): string =>
 let makeExecQuery = (query: string) =>
   Caqti_request.exec(Caqti_type.unit, stripQuery(query));
 
-let getNextTimeOfDay = (refTs: float, hourOfDay: int, minuteOfDay: int)
-  : float => {
-    let t = Unix.gmtime(refTs);
+let getNextTimeOfDay = (
+  refTs: float,
+  hourOfDay: int,
+  minuteOfDay: int,
+): float => {
+  let t = Unix.gmtime(refTs);
+  let (nextTs, _) = Unix.mktime(
+    {...t, tm_hour: hourOfDay, tm_min: minuteOfDay, tm_sec: 0},
+  );
+  if (nextTs > refTs) {
+    nextTs;
+  } else {
+    let c = Calendar.from_unixtm(t);
+    let c = Calendar.add(c, Calendar.Period.day(1));
+    let t = Calendar.to_unixtm(c);
     let (nextTs, _) = Unix.mktime(
       {...t, tm_hour: hourOfDay, tm_min: minuteOfDay, tm_sec: 0},
     );
-    if (nextTs > refTs) {
-      nextTs;
-    } else {
-      let c = Calendar.from_unixtm(t);
-      let c = Calendar.add(c, Calendar.Period.day(1));
-      let t = Calendar.to_unixtm(c);
-      let (nextTs, _) = Unix.mktime(
-        {...t, tm_hour: hourOfDay, tm_min: minuteOfDay, tm_sec: 0},
-      );
-      nextTs;
-    }
+    nextTs;
   }
+}
 
 let rec getProjectPathRec = (curPath: Fpath.t): Fpath.t => {
   if (Fpath.basename(curPath) == projectFolder || Fpath.is_root(curPath)) {
@@ -101,12 +104,9 @@ let getProjectPath = () : Fpath.t => Sys.argv[0]
   |> Fpath.parent
   |> getProjectPathRec;
 
-let getDBFilePath = () : string => {
-  let projectPath = getProjectPath();
-  "schedule.db"
-    |> Fpath.add_seg(projectPath)
-    |> Fpath.to_string;
-}
+let getDBFilePath = () : string => "schedule.db"
+  |> Fpath.add_seg(getProjectPath())
+  |> Fpath.to_string;
 
 let genDBConnection = (): Lwt.t(Caqti_lwt.connection) => {
   let uri = Uri.of_string("sqlite3://" ++ getDBFilePath());
@@ -132,17 +132,20 @@ let genInitTables = (): Lwt.t(unit) => {
     >>= () => C.disconnect();
 }
 
-let genLog = (refTs: float, event: schedulerEvent, message: string)
-  : Lwt.t(unit) => {
-    let%lwt (module C) = genDBConnection();
-    let query = Caqti_request.exec(
-      Caqti_type.(tup3(int64, string, string)),
-      "INSERT INTO log (ts, event, message) VALUES (?, ?, ?);",
-    );
-    C.exec(query, (Int64.of_float(refTs), schedulerEventToStr(event), message))
-      >>= Caqti_lwt.or_fail
-      >>= () => C.disconnect();
-  }
+let genLog = (
+  refTs: float,
+  event: schedulerEvent,
+  message: string,
+): Lwt.t(unit) => {
+  let%lwt (module C) = genDBConnection();
+  let query = Caqti_request.exec(
+    Caqti_type.(tup3(int64, string, string)),
+    "INSERT INTO log (ts, event, message) VALUES (?, ?, ?);",
+  );
+  C.exec(query, (Int64.of_float(refTs), schedulerEventToStr(event), message))
+    >>= Caqti_lwt.or_fail
+    >>= () => C.disconnect();
+}
 
 let genTriggers = (): Lwt.t(list(trigger)) => {
   let%lwt (module C) = genDBConnection();
@@ -163,7 +166,7 @@ let getTimeOfDayFromStr = (timeStr: string): (int, int) => {
   if (Str.string_match(Str.regexp({|^\(\d\d\)\(\d\d\)$|}), timeStr, 0)) {
     (
       int_of_string(Str.matched_group(1, timeStr)),
-      int_of_string(Str.matched_group(1, timeStr)),
+      int_of_string(Str.matched_group(2, timeStr)),
     );
   } else {
     raise(Failure("Given time string, " ++ timeStr ++ ", is in wrong format"));
