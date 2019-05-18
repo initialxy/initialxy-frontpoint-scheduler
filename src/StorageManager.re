@@ -215,6 +215,29 @@ let genSchedules = (): Lwt.t(list(schedule)) => {
   }, res));
 }
 
-let genAddSchedule = () => {}
+let genAddSchedule = (refTs: float, newSchedule: schedule) => {
+  let (hour, minute) = getTimeOfDayFromStr(newSchedule.timeOfDay);
+  let%lwt (module C) = genDBConnection();
+  let query = Caqti_request.exec(
+    Caqti_type.(tup3(string, int64, string)),
+    "INSERT INTO schedule (time_of_day, next_run_ts, action) VALUES (?, ?, ?);",
+  );
+  C.exec(query, (
+    newSchedule.timeOfDay,
+    Int64.of_float(getNextTimeOfDay(refTs, hour, minute)),
+    armStateToStr(newSchedule.action),
+  ))
+  >>= Caqti_lwt.or_fail
+  >>= () => C.disconnect();
+}
 
-let genRemoveSchedule = () => {}
+let genRemoveSchedule = (id: int64): Lwt.t(unit) => {
+  let%lwt (module C) = genDBConnection();
+  let query = Caqti_request.exec(
+    Caqti_type.int64,
+    "DELETE FROM schedule WHERE id = ?;",
+  );
+  C.exec(query, id)
+  >>= Caqti_lwt.or_fail
+  >>= () => C.disconnect();
+}
