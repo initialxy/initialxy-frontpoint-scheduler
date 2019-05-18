@@ -59,8 +59,10 @@ let createScheduleNextRunTsIndex = {|
     ON schedule (next_run_ts);
 |};
 
-let stripQuery = (query: string): string =>
-  Str.global_replace(Str.regexp("\n"), "", query);
+let stripQuery = (query: string): string => query
+  |> Str.global_replace(Str.regexp("\n"), "")
+  |> Str.global_replace(Str.regexp({|\(^ +\| +$\)|}), "")
+  |> Str.global_replace(Str.regexp(" +"), " ");
 
 let makeExecQuery = (query: string) =>
   Caqti_request.exec(Caqti_type.unit, stripQuery(query));
@@ -156,7 +158,9 @@ let genLog = (
   }
 
 let getTimeOfDayFromStr = (timeStr: string): (int, int) => {
-  if (Str.string_match(Str.regexp({|^\(\d\d\)\(\d\d\)$|}), timeStr, 0)) {
+  if (Str.string_match(
+    Str.regexp({|^\([0-9][0-9]\)\([0-9][0-9]\)$|}), timeStr, 0),
+  ) {
     (
       int_of_string(Str.matched_group(1, timeStr)),
       int_of_string(Str.matched_group(2, timeStr)),
@@ -166,7 +170,7 @@ let getTimeOfDayFromStr = (timeStr: string): (int, int) => {
   }
 }
 
-let genUpdateSchedules = (
+let genUpdateSchedulesNextRunTime = (
   refTs: float,
   ids: list(int64),
 ): Lwt.t(unit) => {
@@ -225,17 +229,18 @@ let genSchedules = (): Lwt.t(list(schedule)) => {
   }, res));
 }
 
-let genAddSchedule = (refTs: float, newSchedule: schedule) => {
-  let (hour, minute) = getTimeOfDayFromStr(newSchedule.timeOfDay);
+let genAddSchedule = (refTs: float, newSchedule: (string, armState)) => {
+  let (timeOfDay, action) = newSchedule;
+  let (hour, minute) = getTimeOfDayFromStr(timeOfDay);
   let%lwt (module C) = genDBConnection();
   let query = Caqti_request.exec(
     Caqti_type.(tup3(string, int64, string)),
     "INSERT INTO schedule (time_of_day, next_run_ts, action) VALUES (?, ?, ?);",
   );
   C.exec(query, (
-    newSchedule.timeOfDay,
+    timeOfDay,
     Int64.of_float(getNextTimeOfDay(refTs, hour, minute)),
-    armStateToStr(newSchedule.action),
+    armStateToStr(action),
   ))
     >>= Caqti_lwt.or_fail
     >>= () => C.disconnect();
