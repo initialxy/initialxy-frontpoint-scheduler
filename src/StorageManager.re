@@ -23,6 +23,7 @@ type schedule = {
 }
 
 let projectFolder = "initialxy-frontpoint-scheduler";
+let maxLogRows = 10000;
 
 let createLogTable = {|
   CREATE TABLE IF NOT EXISTS log (
@@ -135,15 +136,24 @@ let genLog = (
     Caqti_type.(tup4(int64, int64, string, string)),
     "INSERT INTO log (ts, ref_ts, event, message) VALUES (?, ?, ?, ?);",
   );
+  let cleanupQuery = Caqti_request.exec(
+    Caqti_type.int,
+    stripQuery({|
+      WITH c AS (SELECT *, ROW_NUMBER() OVER (ORDER BY ts DESC) AS rn FROM log)
+      DELETE FROM log WHERE id IN (SELECT id FROM c WHERE rn > ?);
+    |}),
+  );
   C.exec(query, (
     Int64.of_float(Unix.time()),
     Int64.of_float(refTs),
     schedulerEventToStr(event),
     message,
   ))
-  >>= Caqti_lwt.or_fail
-  >>= () => C.disconnect();
-}
+    >>= Caqti_lwt.or_fail
+    >>= () => C.exec(cleanupQuery, maxLogRows)
+    >>= Caqti_lwt.or_fail
+    >>= () => C.disconnect();
+  }
 
 let getTimeOfDayFromStr = (timeStr: string): (int, int) => {
   if (Str.string_match(Str.regexp({|^\(\d\d\)\(\d\d\)$|}), timeStr, 0)) {
@@ -227,8 +237,8 @@ let genAddSchedule = (refTs: float, newSchedule: schedule) => {
     Int64.of_float(getNextTimeOfDay(refTs, hour, minute)),
     armStateToStr(newSchedule.action),
   ))
-  >>= Caqti_lwt.or_fail
-  >>= () => C.disconnect();
+    >>= Caqti_lwt.or_fail
+    >>= () => C.disconnect();
 }
 
 let genRemoveSchedule = (id: int64): Lwt.t(unit) => {
@@ -238,6 +248,6 @@ let genRemoveSchedule = (id: int64): Lwt.t(unit) => {
     "DELETE FROM schedule WHERE id = ?;",
   );
   C.exec(query, id)
-  >>= Caqti_lwt.or_fail
-  >>= () => C.disconnect();
+    >>= Caqti_lwt.or_fail
+    >>= () => C.disconnect();
 }
