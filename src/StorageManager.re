@@ -115,17 +115,15 @@ let genDBConnection = (): Lwt.t(Caqti_lwt.connection) => {
 
 let genInitTables = (): Lwt.t(unit) => {
   let%lwt (module C) = genDBConnection();
-  C.exec(makeExecQuery(createLogTable), ())
-    >>= Caqti_lwt.or_fail
-    >>= () => C.exec(makeExecQuery(createScheduleTable), ())
-    >>= Caqti_lwt.or_fail
-    >>= () => C.exec(makeExecQuery(createLogTsIndex), ())
-    >>= Caqti_lwt.or_fail
-    >>= () => C.exec(makeExecQuery(createScheduleTimeOfDayIndex), ())
-    >>= Caqti_lwt.or_fail
-    >>= () => C.exec(makeExecQuery(createScheduleNextRunTsIndex), ())
-    >>= Caqti_lwt.or_fail
-    >>= () => C.disconnect();
+  let%lwt _ = C.exec(makeExecQuery(createLogTable), ())
+    >>= Caqti_lwt.or_fail;
+  let%lwt _ = C.exec(makeExecQuery(createScheduleTable), ())
+    >>= Caqti_lwt.or_fail;
+  let%lwt _ = C.exec(makeExecQuery(createScheduleTimeOfDayIndex), ())
+    >>= Caqti_lwt.or_fail;
+  let%lwt _ = C.exec(makeExecQuery(createScheduleNextRunTsIndex), ())
+    >>= Caqti_lwt.or_fail;
+  C.disconnect();
 }
 
 let genLog = (
@@ -145,17 +143,15 @@ let genLog = (
       DELETE FROM log WHERE id IN (SELECT id FROM c WHERE rn > ?);
     |}),
   );
-  C.exec(query, (
+  let%lwt _ = C.exec(query, (
     Int64.of_float(Unix.time()),
     Int64.of_float(refTs),
     schedulerEventToStr(event),
     message,
-  ))
-    >>= Caqti_lwt.or_fail
-    >>= () => C.exec(cleanupQuery, maxLogRows)
-    >>= Caqti_lwt.or_fail
-    >>= () => C.disconnect();
-  }
+  )) >>= Caqti_lwt.or_fail;
+  let%lwt _ = C.exec(cleanupQuery, maxLogRows) >>= Caqti_lwt.or_fail;
+  C.disconnect();
+}
 
 let getTimeOfDayFromStr = (timeStr: string): (int, int) => {
   if (Str.string_match(
@@ -185,7 +181,7 @@ let genUpdateSchedulesNextRunTime = (
     stripQuery(rawSearchQuery),
   );
   let%lwt res = C.collect_list(query, ()) >>= Caqti_lwt.or_fail;
-  List.fold_left(
+  let%lwt _ = List.fold_left(
     (acc, row) => {
       let (id, timeOfDay) = row;
       let (hour, minute) = getTimeOfDayFromStr(timeOfDay);
@@ -202,8 +198,8 @@ let genUpdateSchedulesNextRunTime = (
     },
     return(),
     res,
-  )
-    >>= () => C.disconnect();
+  );
+  C.disconnect();
 }
 
 let genSchedules = (): Lwt.t(list(schedule)) => {
@@ -237,13 +233,12 @@ let genAddSchedule = (refTs: float, newSchedule: (string, armState)) => {
     Caqti_type.(tup3(string, int64, string)),
     "INSERT INTO schedule (time_of_day, next_run_ts, action) VALUES (?, ?, ?);",
   );
-  C.exec(query, (
+  let%lwt _ = C.exec(query, (
     timeOfDay,
     Int64.of_float(getNextTimeOfDay(refTs, hour, minute)),
     armStateToStr(action),
-  ))
-    >>= Caqti_lwt.or_fail
-    >>= () => C.disconnect();
+  )) >>= Caqti_lwt.or_fail;
+  C.disconnect();
 }
 
 let genRemoveSchedule = (id: int64): Lwt.t(unit) => {
@@ -252,7 +247,6 @@ let genRemoveSchedule = (id: int64): Lwt.t(unit) => {
     Caqti_type.int64,
     "DELETE FROM schedule WHERE id = ?;",
   );
-  C.exec(query, id)
-    >>= Caqti_lwt.or_fail
-    >>= () => C.disconnect();
+  let%lwt _ = C.exec(query, id) >>= Caqti_lwt.or_fail;
+  C.disconnect();
 }

@@ -100,8 +100,7 @@ let genLogin = (userName: string, password: string): Lwt.t(authInfo) => {
       password,
     )),
     Uri.of_string(tokenURL),
-  )
-    >>= genPreprocessResponse;
+  ) >>= genPreprocessResponse;
   let token = stripQuotes(body);
   let%lwt (_, body) = Client.post(
     ~headers=Header.of_list([
@@ -146,8 +145,7 @@ let genSystemID = (auth: authInfo): Lwt.t(string) => {
   let%lwt (_, body) = Client.get(
     ~headers=createGetAuthHeaders(auth),
     Uri.of_string(identitiesURL),
-  )
-    >>= genPreprocessResponse;
+  ) >>= genPreprocessResponse;
   try ({
     open Yojson.Basic.Util;
     let systemIDs = Yojson.Basic.from_string(body)
@@ -173,8 +171,7 @@ let genPartitionID = (auth: authInfo, systemID: string): Lwt.t(string) => {
   let%lwt (_, body) = Client.get(
     ~headers=createGetAuthHeaders(auth),
     Uri.of_string(systemsURL ++ "/" ++ systemID),
-  )
-    >>= genPreprocessResponse;
+  ) >>= genPreprocessResponse;
   try ({
     open Yojson.Basic.Util;
     let paritionIDs = Yojson.Basic.from_string(body)
@@ -203,8 +200,7 @@ let genCurrentArmState = (
   let%lwt (_, body) = Client.get(
     ~headers=createGetAuthHeaders(auth),
     Uri.of_string(partitionsURL ++ "/" ++ partitionID),
-  )
-    >>= genPreprocessResponse;
+  ) >>= genPreprocessResponse;
   try ({
     open Yojson.Basic.Util;
     let state = Yojson.Basic.from_string(body)
@@ -233,8 +229,7 @@ let genArm = (
       armStateToStr(state),
     )),
     ~body=Cohttp_lwt.Body.of_string({|{"statePollOnly":false}|}),
-  )
-    >>= genPreprocessResponse;
+  ) >>= genPreprocessResponse;
   return();
 }
 
@@ -242,8 +237,7 @@ let genLogout = (auth: authInfo): Lwt.t(unit) => {
   let%lwt _ = Client.get(
     ~headers=createGetAuthHeaders(auth),
     Uri.of_string(alarmLogoutURL),
-  )
-    >>= genPreprocessResponse;
+  ) >>= genPreprocessResponse;
   let%lwt _ = Client.get(
     ~headers=Header.of_list([
       ("Accept", "text/html"),
@@ -252,7 +246,6 @@ let genLogout = (auth: authInfo): Lwt.t(unit) => {
       ("User-Agent", userAgent),
     ]),
     Uri.of_string(frontpointLogoutURL),
-  )
-    >>= genPreprocessResponse;
+  ) >>= genPreprocessResponse;
   return();
 }
