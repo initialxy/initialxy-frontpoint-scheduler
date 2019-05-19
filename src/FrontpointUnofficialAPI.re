@@ -71,23 +71,24 @@ let stripQuotes = quotedStr => {
 }
 
 let genPreprocessResponse = (
-  extra: option('a),
   response: (Response.t, Cohttp_lwt.Body.t),
-): Lwt.t((option('a), string, string)) => {
+): Lwt.t((string, string)) => {
   let (meta, body) = response;
   let code = Response.status(meta);
   if (code == `OK || code == `Found) {
     let cookie = Header.get_multi(Response.headers(meta), "set-cookie")
       |> String.concat("; ");
-    Cohttp_lwt.Body.to_string(body)
-    >>= bodyText => return((extra, cookie, bodyText));
+    let%lwt bodyText = Cohttp_lwt.Body.to_string(body)
+    return((cookie, bodyText));
   } else {
-    fail(Failure("Failed response"));
+    fail(Failure(
+      Printf.sprintf("Failed response: %d", Code.code_of_status(code)),
+    ));
   }
 }
 
 let genLogin = (userName: string, password: string): Lwt.t(authInfo) => {
-  Client.post(
+  let%lwt (_, body) = Client.post(
     ~headers=Header.of_list([
       ("Content-Type", contentType),
       ("Referer", loginURL),
@@ -96,51 +97,34 @@ let genLogin = (userName: string, password: string): Lwt.t(authInfo) => {
     ~body=Cohttp_lwt.Body.of_string(Printf.sprintf(
       {|{"Username":"%s","Password":"%s","RememberMe":false}|},
       userName,
-      password
+      password,
     )),
     Uri.of_string(tokenURL),
   )
-  >>= genPreprocessResponse(None)
-  >>= result => {
-    let (_, _, body) = result
-    let token = stripQuotes(body);
-    Client.post(
-      ~headers=Header.of_list([
-        ("Content-Type", contentType),
-        ("Cookie", "FPTOKEN=" ++ token),
-        ("Authorization", "Bearer " ++ token),
-        ("Referer", loginURL),
-        ("User-Agent", userAgent),
-      ]),
-      ~body=Cohttp_lwt.Body.of_string(
-        Printf.sprintf({|{"Href":"%s"}|}, loginURL),
-      ),
-      Uri.of_string(redirectURL),
-    )
-    >>= genPreprocessResponse(Some(token))
-  }
-  >>= result => {
-    let (maybeToken, _, body) = result;
-    let dest = stripQuotes(body)
-    Client.get(Uri.of_string(dest))
-    >>= genPreprocessResponse(maybeToken)
-  }
-  >>= result => {
-    let (maybeToken, cookie, body) = result;
-    if (maybeToken != None) {
-      let tokenText = switch(maybeToken) {
-        | None => ""
-        | Some(t) => t
-      }
-      if (Str.string_match(Str.regexp({|.*\bafg=\([^;]+\);.*|}), cookie, 0)) {
-        let afg = Str.matched_group(1, cookie);
-        return({afg: afg, cookie: cookie, token: tokenText});
-      } else {
-        fail(Failure("afg not found in cookie"));
-      }
-    } else {
-      fail(Failure("Token not found"));
-    }
+    >>= genPreprocessResponse;
+  let token = stripQuotes(body);
+  let%lwt (_, body) = Client.post(
+    ~headers=Header.of_list([
+      ("Content-Type", contentType),
+      ("Cookie", "FPTOKEN=" ++ token),
+      ("Authorization", "Bearer " ++ token),
+      ("Referer", loginURL),
+      ("User-Agent", userAgent),
+    ]),
+    ~body=Cohttp_lwt.Body.of_string(
+      Printf.sprintf({|{"Href":"%s"}|}, loginURL),
+    ),
+    Uri.of_string(redirectURL),
+  )
+    >>= genPreprocessResponse;
+  let dest = stripQuotes(body);
+  let%lwt (cookie, body) = Client.get(Uri.of_string(dest))
+    >>= genPreprocessResponse;
+  if (Str.string_match(Str.regexp({|.*\bafg=\([^;]+\);.*|}), cookie, 0)) {
+    let afg = Str.matched_group(1, cookie);
+    return({afg: afg, cookie: cookie, token: token});
+  } else {
+    fail(Failure("afg not found in cookie"));
   }
 }
 
@@ -159,62 +143,56 @@ let createPostAuthHeaders = (auth: authInfo) => Header.add(
 );
 
 let genSystemID = (auth: authInfo): Lwt.t(string) => {
-  Client.get(
+  let%lwt (_, body) = Client.get(
     ~headers=createGetAuthHeaders(auth),
     Uri.of_string(identitiesURL),
   )
-  >>= genPreprocessResponse(None)
-  >>= result => {
-    let (_, _, body) = result;
-    try ({
-      open Yojson.Basic.Util;
-      let systemIDs = Yojson.Basic.from_string(body)
+    >>= genPreprocessResponse;
+  try ({
+    open Yojson.Basic.Util;
+    let systemIDs = Yojson.Basic.from_string(body)
+      |> member("data")
+      |> to_list
+      |> List.map(data => data
+        |> member("relationships")
+        |> member("selectedSystem")
         |> member("data")
-        |> to_list
-        |> List.map(data => data
-          |> member("relationships")
-          |> member("selectedSystem")
-          |> member("data")
-          |> member("id")
-          |> to_string,
-        );
-      return(switch (systemIDs) {
-        | [i, ...x] => i
-        | _ => raise(Not_found)
-      });
-    }) {
-      | _ => fail(Not_found)
-    }
+        |> member("id")
+        |> to_string,
+      );
+    return(switch (systemIDs) {
+      | [i, ...x] => i
+      | _ => raise(Not_found)
+    });
+  }) {
+    | e => fail(e)
   }
 }
 
 let genPartitionID = (auth: authInfo, systemID: string): Lwt.t(string) => {
-  Client.get(
+  let%lwt (_, body) = Client.get(
     ~headers=createGetAuthHeaders(auth),
     Uri.of_string(systemsURL ++ "/" ++ systemID),
   )
-  >>= genPreprocessResponse(None)
-  >>= result => {
-    let (_, _, body) = result;
-    try ({
-      open Yojson.Basic.Util;
-      let paritionIDs = Yojson.Basic.from_string(body)
-        |> member("data")
-        |> member("relationships")
-        |> member("partitions")
-        |> member("data")
-        |> to_list
-        |> List.map(data => data
-          |> member("id")
-          |> to_string,
-        );
-      return(switch (paritionIDs) {
-        | [i, ...x] => i
-        | _ => raise(Not_found)
-      });
-    }) {
-      | _ => fail(Not_found)
-    }
+    >>= genPreprocessResponse;
+  try ({
+    open Yojson.Basic.Util;
+    let paritionIDs = Yojson.Basic.from_string(body)
+      |> member("data")
+      |> member("relationships")
+      |> member("partitions")
+      |> member("data")
+      |> to_list
+      |> List.map(data => data
+        |> member("id")
+        |> to_string,
+      );
+    return(switch (paritionIDs) {
+      | [i, ...x] => i
+      | _ => raise(Not_found)
+    });
+  }) {
+    | e => fail(e)
   }
 }
 
@@ -222,25 +200,22 @@ let genCurrentArmState = (
   auth: authInfo,
   partitionID: string,
 ): Lwt.t(armState) => {
-  Client.get(
+  let%lwt (_, body) = Client.get(
     ~headers=createGetAuthHeaders(auth),
     Uri.of_string(partitionsURL ++ "/" ++ partitionID),
   )
-  >>= genPreprocessResponse(None)
-  >>= result => {
-    let (_, _, body) = result;
-    try ({
-      open Yojson.Basic.Util;
-      let state = Yojson.Basic.from_string(body)
-        |> member("data")
-        |> member("attributes")
-        |> member("state")
-        |> to_int
-        |> intToArmState
-      return(state);
-    }) {
-      | _ => fail(Not_found)
-    }
+    >>= genPreprocessResponse;
+  try ({
+    open Yojson.Basic.Util;
+    let state = Yojson.Basic.from_string(body)
+      |> member("data")
+      |> member("attributes")
+      |> member("state")
+      |> to_int
+      |> intToArmState
+    return(state);
+  }) {
+    | e => fail(e)
   }
 }
 
@@ -249,7 +224,7 @@ let genArm = (
   partitionID: string,
   state: armState,
 ): Lwt.t(unit) => {
-  Client.post(
+  let%lwt _ = Client.post(
     ~headers=createPostAuthHeaders(auth),
     Uri.of_string(Printf.sprintf(
       "%s/%s/%s",
@@ -259,17 +234,17 @@ let genArm = (
     )),
     ~body=Cohttp_lwt.Body.of_string({|{"statePollOnly":false}|}),
   )
-  >>= genPreprocessResponse(None)
-  >>= _ => return();
+    >>= genPreprocessResponse;
+  return();
 }
 
 let genLogout = (auth: authInfo): Lwt.t(unit) => {
-  Client.get(
+  let%lwt _ = Client.get(
     ~headers=createGetAuthHeaders(auth),
     Uri.of_string(alarmLogoutURL),
   )
-  >>= genPreprocessResponse(None)
-  >>= _ => Client.get(
+    >>= genPreprocessResponse;
+  let%lwt _ = Client.get(
     ~headers=Header.of_list([
       ("Accept", "text/html"),
       ("Cookie", "FPTOKEN=" ++ auth.token),
@@ -278,6 +253,6 @@ let genLogout = (auth: authInfo): Lwt.t(unit) => {
     ]),
     Uri.of_string(frontpointLogoutURL),
   )
-  >>= genPreprocessResponse(None)
-  >>= _ => return();
+    >>= genPreprocessResponse;
+  return();
 }
