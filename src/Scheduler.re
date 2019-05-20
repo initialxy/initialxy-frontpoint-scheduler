@@ -54,4 +54,15 @@ let main = () => {
   }
 }
 
+let cmd = () => {
+  let _ = Arg.parse(
+    [
+      ("--add", Arg.Unit(() => Console.log("Add")), "Add a new schedule"),
+    ],
+    _ => Console.log("Wut"),
+    "Test Test Test",
+  );
+  return(Console.log("Hello World"));
+}
+
 let () = Lwt_main.run(main());
