@@ -131,6 +131,20 @@ let genLog = (
   event: schedulerEvent,
   message: string,
 ): Lwt.t(unit) => {
+  let timeStr = Printer.Calendar.sprint(
+    "%Y-%m-%dT%H:%M:%S",
+    Calendar.convert(
+      Calendar.from_unixfloat(refTs),
+      Time_Zone.UTC,
+      Time_Zone.Local,
+    ),
+  );
+  Console.log(Printf.sprintf(
+    "%s: %s - %s",
+    timeStr,
+    schedulerEventToStr(event),
+    message,
+  ));
   let%lwt (module C) = genDBConnection();
   let query = Caqti_request.exec(
     Caqti_type.(tup4(int64, int64, string, string)),
