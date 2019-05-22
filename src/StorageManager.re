@@ -1,6 +1,6 @@
 open Lwt;
 open CalendarLib;
-open FrontpointUnofficialAPI;
+open UnofficialFrontpointAPI;
 
 type schedulerEvent =
   | ActionFail

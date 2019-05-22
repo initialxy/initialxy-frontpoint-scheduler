@@ -1,4 +1,4 @@
-open FrontpointUnofficialAPI;
+open UnofficialFrontpointAPI;
 open Lwt;
 open StorageManager;
 open Unix;

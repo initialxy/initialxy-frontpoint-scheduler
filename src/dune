@@ -1,6 +1,6 @@
 (executable
   (name Scheduler)
-  (modules Project Scheduler FrontpointUnofficialAPI StorageManager)
+  (modules Project Scheduler UnofficialFrontpointAPI StorageManager)
   (preprocess (pps lwt_ppx))
   (public_name Scheduler)
   (libraries
