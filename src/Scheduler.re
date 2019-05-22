@@ -3,6 +3,20 @@ open Lwt;
 open StorageManager;
 open Unix;
 
+let setEcho = shouldShow => {
+  let tios = tcgetattr(stdin);
+  flush(Pervasives.stdout);
+  tios.c_echo = shouldShow;
+  tcsetattr(stdin, TCSANOW, tios);
+}
+
+let readPassword = () => {
+  setEcho(false);
+  let password = read_line();
+  setEcho(true);
+  password;
+}
+
 let genAction = (
   userName: string,
   password: string,
@@ -115,10 +129,37 @@ let cmd = () => {
     if (Str.string_match(formatRegex, addStr, 0)) {
       let timeStr = Str.matched_group(1, addStr);
       let actionStr = Str.matched_group(2, addStr);
-      let (_, _) = getTimeOfDayFromStr(timeStr);
-      genAddSchedule(Unix.time(), (timeStr, strToArmState(actionStr)));
+      let%lwt (_, _) = try(return(getTimeOfDayFromStr(timeStr))) {
+        | e => fail(e)
+      }
+      let%lwt existingSchedule = genFindSchedule(timeStr);
+      if (existingSchedule == None) {
+        let%lwt _ = genAddSchedule(
+          Unix.time(),
+          (timeStr, strToArmState(actionStr)),
+        );
+        return(Console.log("Schedule added"));
+      } else {
+        fail(Failure("Schedule already exists at time: " ++ timeStr));
+      }
     } else {
-      raise(Failure(addStr ++ " is not a valid format."));
+      raise(Failure(addStr ++ " is not a valid format"));
+    }
+  } else {
+    return();
+  }
+
+  let%lwt _ = if (toRm^ != "") {
+    let rmStr = toRm^;
+    let%lwt (_, _) = try(return(getTimeOfDayFromStr(rmStr))) {
+      | e => fail(e)
+    }
+    let%lwt existingSchedule = genFindSchedule(rmStr);
+    if (existingSchedule != None) {
+      let%lwt _ = genRemoveSchedule(rmStr);
+      return(Console.log("Schedule removed"));
+    } else {
+      fail(Failure("No schedule exists at time: " ++ rmStr));
     }
   } else {
     return();

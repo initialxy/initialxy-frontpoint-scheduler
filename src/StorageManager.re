@@ -172,7 +172,7 @@ let getTimeOfDayFromStr = (timeStr: string): (int, int) => {
   ) {
     let hour = int_of_string(Str.matched_group(1, timeStr));
     let minute = int_of_string(Str.matched_group(2, timeStr));
-    if (hour >= 0 && hour <= 12 && minute >= 0 && minute <= 59) {
+    if (hour >= 0 && hour <= 24 && minute >= 0 && minute <= 59) {
       (hour, minute);
     } else {
       raise(Failure(
@@ -243,6 +243,30 @@ let genSchedules = (): Lwt.t(list(schedule)) => {
   }, res));
 }
 
+let genFindSchedule = (timeOfDay: string): Lwt.t(option(schedule)) => {
+  let%lwt (module C) = genDBConnection();
+  let query = Caqti_request.collect(
+    Caqti_type.string,
+    Caqti_type.(tup4(int64, string, int64, string)),
+    stripQuery({|
+      SELECT id, time_of_day, next_run_ts, action FROM schedule
+      WHERE time_of_day = ?;
+    |}),
+  );
+  let%lwt res = C.collect_list(query, timeOfDay) >>= Caqti_lwt.or_fail;
+  let%lwt _ = C.disconnect();
+  switch (res) {
+    | [(id, timeOfDay, nextRunTs, action)] => return(Some({
+        id: id,
+        timeOfDay: timeOfDay,
+        nextRunTs: nextRunTs,
+        action: strToArmState(action),
+      }))
+    | [] => return(None)
+    | _ => fail(Failure("Multiple schedules on the same time"))
+  }
+}
+
 let genAddSchedule = (
   refTs: float,
   newSchedule: (string, armState),
@@ -262,12 +286,12 @@ let genAddSchedule = (
   C.disconnect();
 }
 
-let genRemoveSchedule = (id: int64): Lwt.t(unit) => {
+let genRemoveSchedule = (timeOfDay: string): Lwt.t(unit) => {
   let%lwt (module C) = genDBConnection();
   let query = Caqti_request.exec(
-    Caqti_type.int64,
-    "DELETE FROM schedule WHERE id = ?;",
+    Caqti_type.string,
+    "DELETE FROM schedule WHERE time_of_day = ?;",
   );
-  let%lwt _ = C.exec(query, id) >>= Caqti_lwt.or_fail;
+  let%lwt _ = C.exec(query, timeOfDay) >>= Caqti_lwt.or_fail;
   C.disconnect();
 }

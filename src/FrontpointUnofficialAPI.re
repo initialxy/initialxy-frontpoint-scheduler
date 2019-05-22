@@ -48,20 +48,6 @@ let frontpointLogoutURL = "https://my.frontpointsecurity.com/login?m=logout";
 let contentType = "application/json";
 let acceptType = "application/vnd.api+json";
 
-let setEcho = shouldShow => {
-  let tios = tcgetattr(stdin);
-  flush(Pervasives.stdout);
-  tios.c_echo = shouldShow;
-  tcsetattr(stdin, TCSANOW, tios);
-}
-
-let readPassword = () => {
-  setEcho(false);
-  let password = read_line();
-  setEcho(true);
-  password;
-}
-
 let stripQuotes = quotedStr => {
   if (Str.string_match(Str.regexp({|^"\(.+\)"$|}), quotedStr, 0)) {
     Str.matched_group(1, quotedStr);
