@@ -22,7 +22,6 @@ type schedule = {
   action: armState,
 }
 
-let projectFolder = "initialxy-frontpoint-scheduler";
 let maxLogRows = 10000;
 
 let createLogTable = {|
@@ -90,7 +89,7 @@ let getNextTimeOfDay = (
 }
 
 let rec getProjectPathRec = (curPath: Fpath.t): Fpath.t => {
-  if (Fpath.basename(curPath) == projectFolder || Fpath.is_root(curPath)) {
+  if (Fpath.basename(curPath) == Project.name || Fpath.is_root(curPath)) {
     curPath;
   } else {
     getProjectPathRec(Fpath.parent(curPath));
@@ -171,10 +170,15 @@ let getTimeOfDayFromStr = (timeStr: string): (int, int) => {
   if (Str.string_match(
     Str.regexp({|^\([0-9][0-9]\)\([0-9][0-9]\)$|}), timeStr, 0),
   ) {
-    (
-      int_of_string(Str.matched_group(1, timeStr)),
-      int_of_string(Str.matched_group(2, timeStr)),
-    );
+    let hour = int_of_string(Str.matched_group(1, timeStr));
+    let minute = int_of_string(Str.matched_group(2, timeStr));
+    if (hour >= 0 && hour <= 12 && minute >= 0 && minute <= 59) {
+      (hour, minute);
+    } else {
+      raise(Failure(
+        "Given time string, " ++ timeStr ++ ", is not a valid time",
+      ));
+    }
   } else {
     raise(Failure("Given time string, " ++ timeStr ++ ", is in wrong format"));
   }
@@ -239,7 +243,10 @@ let genSchedules = (): Lwt.t(list(schedule)) => {
   }, res));
 }
 
-let genAddSchedule = (refTs: float, newSchedule: (string, armState)) => {
+let genAddSchedule = (
+  refTs: float,
+  newSchedule: (string, armState),
+): Lwt.t(unit)=> {
   let (timeOfDay, action) = newSchedule;
   let (hour, minute) = getTimeOfDayFromStr(timeOfDay);
   let%lwt (module C) = genDBConnection();

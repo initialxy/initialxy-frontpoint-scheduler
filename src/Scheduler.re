@@ -55,14 +55,76 @@ let main = () => {
 }
 
 let cmd = () => {
+  let usage = Printf.sprintf(
+    "%s %s\nArm Frontpoint security system states at scheduled times of a day",
+    Project.name,
+    Project.version,
+  );
+
+  let toAdd = ref("");
+  let toRm = ref("");
+  let shouldList = ref(false);
+  let runInterval = ref(0);
+
   let _ = Arg.parse(
     [
-      ("--add", Arg.Unit(() => Console.log("Add")), "Add a new schedule"),
+      (
+        "--list",
+        Arg.Unit(() => shouldList := true),
+        "List all schedules. <hhmm>-<Disarm/ArmStay/ArmAway>",
+      ),
+      (
+        "--add",
+        Arg.String(addStr => toAdd := addStr),
+        "Add a new schedule. <hhmm>-<Disarm/ArmStay/ArmAway> "
+          ++ "eg. To arm away state at 11pm, enter 2300-ArmAway",
+      ),
+      (
+        "--rm",
+        Arg.String(rmStr => toRm := rmStr),
+        "Remove a schedule by its time. <hhmm>",
+      ),
+      (
+        "--run-interval",
+        Arg.Int(interval => runInterval := interval),
+        "Run this script at an interval in seconds.",
+      ),
     ],
-    _ => Console.log("Wut"),
-    "Test Test Test",
+    _ => Console.log(usage),
+    usage,
   );
-  return(Console.log("Hello World"));
+  
+  let%lwt _ = genInitTables();
+  let%lwt _ = if (shouldList^) {
+    let%lwt schedules = genSchedules();
+    return(List.iter(
+      schedule => Console.log(Printf.sprintf(
+        "%s-%s",
+        schedule.timeOfDay,
+        armStateToStr(schedule.action),
+      )),
+      schedules,
+    ));
+  } else {
+    return();
+  }
+
+  let%lwt _ = if (toAdd^ != "") {
+    let addStr = toAdd^;
+    let formatRegex = Str.regexp({|^\([0-9]+\)-\([a-zA-Z]+\)$|});
+    if (Str.string_match(formatRegex, addStr, 0)) {
+      let timeStr = Str.matched_group(1, addStr);
+      let actionStr = Str.matched_group(2, addStr);
+      let (_, _) = getTimeOfDayFromStr(timeStr);
+      genAddSchedule(Unix.time(), (timeStr, strToArmState(actionStr)));
+    } else {
+      raise(Failure(addStr ++ " is not a valid format."));
+    }
+  } else {
+    return();
+  }
+
+  return();
 }
 
-let () = Lwt_main.run(main());
+let () = Lwt_main.run(cmd());

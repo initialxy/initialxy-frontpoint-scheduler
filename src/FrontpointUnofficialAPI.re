@@ -25,17 +25,17 @@ let strToArmState = (state) => switch(state) {
   | "Disarm" => Disarm 
   | "ArmStay" => ArmStay
   | "ArmAway" => ArmAway
-  | _ => raise(Not_found)
+  | _ => raise(Failure("Unknown armState"))
 }
 
 let intToArmState = (state) => switch(state) {
   | 1 => Disarm
   | 2 => ArmStay
   | 3 => ArmAway
-  | _ => raise(Not_found)
+  | _ => raise(Failure("Unknown armState"))
 }
 
-let userAgent = "initialxy-frontpoint-scheduler";
+let userAgent = Printf.sprintf("%s_%s", Project.name, Project.version);
 let loginURL = "https://my.frontpointsecurity.com/login";
 let tokenURL = "https://my.frontpointsecurity.com/api/Login/token";
 let redirectURL = "https://my.frontpointsecurity.com/api/Account/AdcRedirectUrl";
