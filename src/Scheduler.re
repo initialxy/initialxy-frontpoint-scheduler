@@ -94,19 +94,23 @@ let genCheckActionStep = (
         scheduleToStr,
         updatedSchedules,
       ));
-      let%lwt _ = genLog(refTs, Message, "Updated: " ++ message);
+      let%lwt _ = genLog(refTs, Message, "Bumped: " ++ message);
       return(schedules);
     }
   }
 }
 
 let rec genLoop = (
-  schedules: list(schedule),
+  ~cachedSchedules: option(list(schedule))=?,
   userName: string,
   password: string,
   interval: int,
 ): Lwt.t(unit) => {
   let refTs = Unix.time();
+  let%lwt schedules = switch (cachedSchedules) {
+    | Some(cs) => return(cs)
+    | None => genSchedules()
+  }
   let%lwt schedules = try%lwt(
     genCheckActionStep(refTs, schedules, userName, password),
   ) {
@@ -117,7 +121,7 @@ let rec genLoop = (
   }
 
   let%lwt _ = Lwt_unix.sleep(float_of_int(interval));
-  genLoop(schedules, userName, password, interval);
+  genLoop(~cachedSchedules=schedules, userName, password, interval);
 }
 
 let main = () => {
@@ -234,7 +238,7 @@ let main = () => {
     Console.log("Enter password:");
     let password = readPassword();
     let%lwt schedules = genSchedules();
-    genLoop(schedules, userName, password, interval);
+    genLoop(userName, password, interval);
   } else {
     return();
   }
