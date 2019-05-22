@@ -57,18 +57,39 @@ let rec genActionWithRetry = (
   }
 }
 
-let main = () => {
-  Console.log("Enter username:");
-  let userName = read_line();
-  Console.log("Enter password:");
-  let password = readPassword();
-  try%lwt(genActionWithRetry(Unix.time(), userName, password, ArmStay, 1)) {
-    | Failure(msg) => return(Console.log(msg));
-    | _ => return(Console.log("Encountered error"));
+let rec genLoop = (
+  schedules: list(schedule),
+  userName: string,
+  password: string,
+  interval: int,
+): Lwt.t(unit) => {
+  let refTs = Unix.time();
+  let schedulesToAction = List.filter(s => s.nextRunTs <= refTs, schedules);
+  let schedulesToAction = List.sort(
+    (l, r) => compare(r.nextRunTs, l.nextRunTs),
+    schedulesToAction,
+  );
+  let%lwt _ = switch (schedulesToAction) {
+    | [] => return()
+    | [s, ...x] => {
+      let%lwt _ = genActionWithRetry(refTs, userName, password, s.action, 1);
+      genUpdateSchedulesNextRunTime(
+        refTs,
+        List.map(s => s.id, schedulesToAction),
+      );
+    }
+  }
+  let%lwt _ = Lwt_unix.sleep(float_of_int(interval));
+  switch (schedulesToAction) {
+    | [] => genLoop(schedules, userName, password, interval)
+    | [s, ...x] => {
+      let%lwt schedules = genSchedules();
+      genLoop(schedules, userName, password, interval);
+    }
   }
 }
 
-let cmd = () => {
+let main = () => {
   let usage = Printf.sprintf(
     "%s %s\nArm Frontpoint security system states at scheduled times of a day",
     Project.name,
@@ -78,7 +99,7 @@ let cmd = () => {
   let toAdd = ref("");
   let toRm = ref("");
   let shouldList = ref(false);
-  let runInterval = ref(0);
+  let toRunInterval = ref(0);
 
   let _ = Arg.parse(
     [
@@ -91,7 +112,7 @@ let cmd = () => {
         "--add",
         Arg.String(addStr => toAdd := addStr),
         "Add a new schedule. <hhmm>-<Disarm/ArmStay/ArmAway> "
-          ++ "eg. To arm away state at 11pm, enter 2300-ArmAway",
+          ++ "eg. To arm away at 11pm, enter 2300-ArmAway",
       ),
       (
         "--rm",
@@ -100,7 +121,7 @@ let cmd = () => {
       ),
       (
         "--run-interval",
-        Arg.Int(interval => runInterval := interval),
+        Arg.Int(interval => toRunInterval := interval),
         "Run this script at an interval in seconds.",
       ),
     ],
@@ -165,7 +186,17 @@ let cmd = () => {
     return();
   }
 
-  return();
+  if (toRunInterval^ > 0) {
+    let interval = toRunInterval^;
+    Console.log("Enter username:");
+    let userName = read_line();
+    Console.log("Enter password:");
+    let password = readPassword();
+    let%lwt schedules = genSchedules();
+    genLoop(schedules, userName, password, interval);
+  } else {
+    return();
+  }
 }
 
-let () = Lwt_main.run(cmd());
+let () = Lwt_main.run(main());

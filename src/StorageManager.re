@@ -18,7 +18,7 @@ let schedulerEventToStr = (event) => switch(event) {
 type schedule = {
   id: int64,
   timeOfDay: string,
-  nextRunTs: int64,
+  nextRunTs: float,
   action: armState,
 }
 
@@ -237,7 +237,7 @@ let genSchedules = (): Lwt.t(list(schedule)) => {
     {
       id: id,
       timeOfDay: timeOfDay,
-      nextRunTs: nextRunTs,
+      nextRunTs: Int64.to_float(nextRunTs),
       action: strToArmState(action),
     };
   }, res));
@@ -259,7 +259,7 @@ let genFindSchedule = (timeOfDay: string): Lwt.t(option(schedule)) => {
     | [(id, timeOfDay, nextRunTs, action)] => return(Some({
         id: id,
         timeOfDay: timeOfDay,
-        nextRunTs: nextRunTs,
+        nextRunTs: Int64.to_float(nextRunTs),
         action: strToArmState(action),
       }))
     | [] => return(None)
