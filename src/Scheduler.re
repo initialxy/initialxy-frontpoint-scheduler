@@ -41,7 +41,7 @@ let rec genActionWithRetry = (
   retry: int,
 ): Lwt.t(unit) => {
   try%lwt(genAction(userName, password, action)) {
-    | e => if (retry > 0) {
+    | e => {
       let message = Printf.sprintf(
         "%s failed. Retry: %d - %s",
         armStateToStr(action),
@@ -49,10 +49,43 @@ let rec genActionWithRetry = (
         Printexc.to_string(e),
       );
       let%lwt _ = genLog(refTs, ActionFail, message);
-      let%lwt _ = Lwt_unix.sleep(10.0);
-      genActionWithRetry(refTs, userName, password, action, retry - 1);
-    } else {
-      fail(e);
+      if (retry > 0) {
+        let%lwt _ = Lwt_unix.sleep(10.0);
+        genActionWithRetry(refTs, userName, password, action, retry - 1);
+      } else {
+        fail(e);
+      }
+    }
+  }
+}
+
+let genCheckActionStep = (
+  refTs: float,
+  schedules: list(schedule),
+  userName: string,
+  password: string,
+): Lwt.t(list(schedule)) => {
+  let schedulesToAction = List.filter(s => s.nextRunTs <= refTs, schedules);
+  let schedulesToAction = List.sort(
+    (l, r) => compare(r.nextRunTs, l.nextRunTs),
+    schedulesToAction,
+  );
+  switch (schedulesToAction) {
+    | [] => return(schedules)
+    | [s, ...x] => {
+      let%lwt _ = genLog(refTs, TriggerAction, scheduleToStr(s));
+      let%lwt _ = genActionWithRetry(refTs, userName, password, s.action, 1);
+      let%lwt _ = genLog(refTs, ActionSuccess, scheduleToStr(s));
+      let%lwt _ = genUpdateSchedulesNextRunTime(
+        refTs,
+        List.map(s => s.id, schedulesToAction),
+      );
+      let message = String.concat(", ", List.map(
+        scheduleToStr,
+        schedulesToAction,
+      ));
+      let%lwt _ = genLog(refTs, Message, "Updated: " ++ message);
+      genSchedules();
     }
   }
 }
@@ -64,29 +97,17 @@ let rec genLoop = (
   interval: int,
 ): Lwt.t(unit) => {
   let refTs = Unix.time();
-  let schedulesToAction = List.filter(s => s.nextRunTs <= refTs, schedules);
-  let schedulesToAction = List.sort(
-    (l, r) => compare(r.nextRunTs, l.nextRunTs),
-    schedulesToAction,
-  );
-  let%lwt _ = switch (schedulesToAction) {
-    | [] => return()
-    | [s, ...x] => {
-      let%lwt _ = genActionWithRetry(refTs, userName, password, s.action, 1);
-      genUpdateSchedulesNextRunTime(
-        refTs,
-        List.map(s => s.id, schedulesToAction),
-      );
+  let%lwt schedules = try%lwt(
+    genCheckActionStep(refTs, schedules, userName, password),
+  ) {
+    | e => {
+      let%lwt _ = genLog(refTs, Error, Printexc.to_string(e));
+      return(schedules);
     }
   }
+
   let%lwt _ = Lwt_unix.sleep(float_of_int(interval));
-  switch (schedulesToAction) {
-    | [] => genLoop(schedules, userName, password, interval)
-    | [s, ...x] => {
-      let%lwt schedules = genSchedules();
-      genLoop(schedules, userName, password, interval);
-    }
-  }
+  genLoop(schedules, userName, password, interval);
 }
 
 let main = () => {
@@ -133,11 +154,7 @@ let main = () => {
   let%lwt _ = if (shouldList^) {
     let%lwt schedules = genSchedules();
     return(List.iter(
-      schedule => Console.log(Printf.sprintf(
-        "%s-%s",
-        schedule.timeOfDay,
-        armStateToStr(schedule.action),
-      )),
+      schedule => Console.log(scheduleToStr(schedule)),
       schedules,
     ));
   } else {
@@ -159,6 +176,7 @@ let main = () => {
           Unix.time(),
           (timeStr, strToArmState(actionStr)),
         );
+        let%lwt _ = genLog(Unix.time(), Message, "Schedule added: " ++ addStr);
         return(Console.log("Schedule added"));
       } else {
         fail(Failure("Schedule already exists at time: " ++ timeStr));
@@ -176,11 +194,17 @@ let main = () => {
       | e => fail(e)
     }
     let%lwt existingSchedule = genFindSchedule(rmStr);
-    if (existingSchedule != None) {
-      let%lwt _ = genRemoveSchedule(rmStr);
-      return(Console.log("Schedule removed"));
-    } else {
-      fail(Failure("No schedule exists at time: " ++ rmStr));
+    switch (existingSchedule) {
+      | None => fail(Failure("No schedule exists at time: " ++ rmStr))
+      | Some(schedule) => {
+        let%lwt _ = genRemoveSchedule(rmStr);
+        let%lwt _ = genLog(
+          Unix.time(),
+          Message,
+          "Schedule removed: " ++ scheduleToStr(schedule),
+        );
+        return(Console.log("Schedule removed"));
+      }
     }
   } else {
     return();

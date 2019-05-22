@@ -3,16 +3,18 @@ open CalendarLib;
 open FrontpointUnofficialAPI;
 
 type schedulerEvent =
-  | TriggerAction
-  | ActionSuccess
   | ActionFail
+  | ActionSuccess
   | Error
+  | Message
+  | TriggerAction
 
 let schedulerEventToStr = (event) => switch(event) {
-  | TriggerAction => "TriggerAction"
-  | ActionSuccess => "ActionSuccess"
   | ActionFail => "ActionFail"
+  | ActionSuccess => "ActionSuccess"
   | Error => "Error"
+  | Message => "Message"
+  | TriggerAction => "TriggerAction"
 }
 
 type schedule = {
@@ -21,6 +23,14 @@ type schedule = {
   nextRunTs: float,
   action: armState,
 }
+
+let scheduleToStr = (schedule: schedule) => Printf.sprintf(
+  "%Ld-%Ld-%s-%s",
+  schedule.id,
+  Int64.of_float(schedule.nextRunTs),
+  schedule.timeOfDay,
+  armStateToStr(schedule.action),
+)
 
 let maxLogRows = 10000;
 
@@ -172,7 +182,7 @@ let getTimeOfDayFromStr = (timeStr: string): (int, int) => {
   ) {
     let hour = int_of_string(Str.matched_group(1, timeStr));
     let minute = int_of_string(Str.matched_group(2, timeStr));
-    if (hour >= 0 && hour <= 24 && minute >= 0 && minute <= 59) {
+    if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
       (hour, minute);
     } else {
       raise(Failure(
