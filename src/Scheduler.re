@@ -3,6 +3,8 @@ open Lwt;
 open StorageManager;
 open Unix;
 
+module SI = Set.Make(Int64);
+
 let setEcho = shouldShow => {
   let tios = tcgetattr(stdin);
   flush(Pervasives.stdout);
@@ -80,12 +82,20 @@ let genCheckActionStep = (
         refTs,
         List.map(s => s.id, schedulesToAction),
       );
+      let%lwt schedules = genSchedules();
+      let schedulesToActionIDs = SI.of_list(
+        List.map(s => s.id, schedulesToAction),
+      );
+      let updatedSchedules = List.filter(
+        s => SI.mem(s.id, schedulesToActionIDs),
+        schedules,
+      );
       let message = String.concat(", ", List.map(
         scheduleToStr,
-        schedulesToAction,
+        updatedSchedules,
       ));
       let%lwt _ = genLog(refTs, Message, "Updated: " ++ message);
-      genSchedules();
+      return(schedules);
     }
   }
 }
@@ -138,7 +148,7 @@ let main = () => {
       (
         "--rm",
         Arg.String(rmStr => toRm := rmStr),
-        "Remove a schedule by its time. <hhmm>",
+        "Remove a schedule by its time of day. <hhmm>",
       ),
       (
         "--run-interval",
@@ -153,6 +163,7 @@ let main = () => {
   let%lwt _ = genInitTables();
   let%lwt _ = if (shouldList^) {
     let%lwt schedules = genSchedules();
+    Console.log("id-nextRunTs-timeOfDay-action");
     return(List.iter(
       schedule => Console.log(scheduleToStr(schedule)),
       schedules,
@@ -176,13 +187,20 @@ let main = () => {
           Unix.time(),
           (timeStr, strToArmState(actionStr)),
         );
-        let%lwt _ = genLog(Unix.time(), Message, "Schedule added: " ++ addStr);
-        return(Console.log("Schedule added"));
+        let%lwt schedule = genFindSchedule(timeStr);
+        switch (schedule) {
+          | None => fail(Failure(addStr ++ " doesn't seem to be saved"))
+          | Some(s) => genLog(
+            Unix.time(),
+            Message,
+            "Schedule added: " ++ scheduleToStr(s),
+          )
+        }
       } else {
         fail(Failure("Schedule already exists at time: " ++ timeStr));
       }
     } else {
-      raise(Failure(addStr ++ " is not a valid format"));
+      fail(Failure(addStr ++ " is not a valid format"));
     }
   } else {
     return();
@@ -196,14 +214,13 @@ let main = () => {
     let%lwt existingSchedule = genFindSchedule(rmStr);
     switch (existingSchedule) {
       | None => fail(Failure("No schedule exists at time: " ++ rmStr))
-      | Some(schedule) => {
+      | Some(s) => {
         let%lwt _ = genRemoveSchedule(rmStr);
-        let%lwt _ = genLog(
+        genLog(
           Unix.time(),
           Message,
-          "Schedule removed: " ++ scheduleToStr(schedule),
+          "Schedule removed: " ++ scheduleToStr(s),
         );
-        return(Console.log("Schedule removed"));
       }
     }
   } else {
