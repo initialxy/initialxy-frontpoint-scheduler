@@ -146,13 +146,14 @@ let main = () => {
       (
         "--list",
         Arg.Unit(() => shouldList := true),
-        "List all schedules. <hhmm>-<Disarm/ArmStay/ArmAway>",
+        "List all schedules. "
+          ++ "<id>-<nextRunTs>-<hhmm>-<Disarm/ArmStay/ArmAway>",
       ),
       (
         "--add",
         Arg.String(addStr => toAdd := addStr),
         "Add a new schedule. <hhmm>-<Disarm/ArmStay/ArmAway> "
-          ++ "eg. To arm away at 11pm, enter 2300-ArmAway",
+          ++ "eg. To arm away at 11:30pm, enter 2330-ArmAway",
       ),
       (
         "--rm",
@@ -162,7 +163,9 @@ let main = () => {
       (
         "--run-interval",
         Arg.Int(interval => toRunInterval := interval),
-        "Run this script at an interval in seconds.",
+        "Run this script at an interval in seconds to perform scheduled "
+          ++ "actions. You will be asked to enter user name and password "
+          ++ "upon launch.",
       ),
     ],
     _ => Console.log(usage),
