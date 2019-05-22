@@ -120,7 +120,12 @@ let rec genLoop = (
     }
   }
 
-  let%lwt _ = Lwt_unix.sleep(float_of_int(interval));
+  let waitTime = refTs +. float_of_int(interval) -. Unix.time();
+  let%lwt _ = if (waitTime > 0.0) {
+    Lwt_unix.sleep(float_of_int(interval));
+  } else {
+    return();
+  }
   genLoop(~cachedSchedules=schedules, userName, password, interval);
 }
 
@@ -238,6 +243,7 @@ let main = () => {
     Console.log("Enter password:");
     let password = readPassword();
     let%lwt schedules = genSchedules();
+    Console.log("Start loop");
     genLoop(userName, password, interval);
   } else {
     return();

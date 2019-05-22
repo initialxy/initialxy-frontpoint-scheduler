@@ -220,7 +220,7 @@ let genUpdateSchedulesNextRunTime = (
       acc
         >>= () => C.exec(
           updateQuery,
-          (id, Int64.of_float(getNextTimeOfDay(refTs, hour, minute))),
+          (Int64.of_float(getNextTimeOfDay(refTs, hour, minute)), id),
         )
         >>= Caqti_lwt.or_fail;
     },
