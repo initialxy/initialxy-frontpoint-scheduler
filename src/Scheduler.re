@@ -141,7 +141,7 @@ let main = () => {
   let shouldList = ref(false);
   let toRunInterval = ref(0);
 
-  let _ = Arg.parse(
+  Arg.parse(
     [
       (
         "--list",
