@@ -148,7 +148,7 @@ let genLog = (
       Time_Zone.Local,
     ),
   );
-  Console.log(Printf.sprintf(
+  print_endline(Printf.sprintf(
     "%s: %s - %s",
     timeStr,
     schedulerEventToStr(event),

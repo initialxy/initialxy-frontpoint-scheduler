@@ -168,16 +168,16 @@ let main = () => {
           ++ "upon launch.",
       ),
     ],
-    _ => Console.log(usage),
+    _ => print_endline(usage),
     usage,
   );
   
   let%lwt _ = genInitTables();
   let%lwt _ = if (shouldList^) {
     let%lwt schedules = genSchedules();
-    Console.log("id-nextRunTs-timeOfDay-action");
+    print_endline("id-nextRunTs-timeOfDay-action");
     return(List.iter(
-      schedule => Console.log(scheduleToStr(schedule)),
+      schedule => print_endline(scheduleToStr(schedule)),
       schedules,
     ));
   } else {
@@ -241,12 +241,12 @@ let main = () => {
 
   if (toRunInterval^ > 0) {
     let interval = toRunInterval^;
-    Console.log("Enter username:");
+    print_endline("Enter username:");
     let userName = read_line();
-    Console.log("Enter password:");
+    print_endline("Enter password:");
     let password = readPassword();
     let%lwt schedules = genSchedules();
-    Console.log("Start loop");
+    print_endline("Start loop");
     genLoop(userName, password, interval);
   } else {
     return();
