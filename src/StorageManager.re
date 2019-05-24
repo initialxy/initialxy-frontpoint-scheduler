@@ -160,11 +160,8 @@ let genLog = (
     "INSERT INTO log (ts, ref_ts, event, message) VALUES (?, ?, ?, ?);",
   );
   let cleanupQuery = Caqti_request.exec(
-    Caqti_type.int,
-    stripQuery({|
-      WITH c AS (SELECT *, ROW_NUMBER() OVER (ORDER BY ts DESC) AS rn FROM log)
-      DELETE FROM log WHERE id IN (SELECT id FROM c WHERE rn > ?);
-    |}),
+    Caqti_type.int64,
+    "DELETE FROM log WHERE ts < ?;",
   );
   let%lwt _ = C.exec(query, (
     Int64.of_float(Unix.time()),
@@ -172,7 +169,7 @@ let genLog = (
     schedulerEventToStr(event),
     message,
   )) >>= Caqti_lwt.or_fail;
-  let%lwt _ = C.exec(cleanupQuery, maxLogRows) >>= Caqti_lwt.or_fail;
+  let%lwt _ = C.exec(cleanupQuery, Int64.of_float(Unix.time() -. 604800.0)) >>= Caqti_lwt.or_fail;
   C.disconnect();
 }
 
