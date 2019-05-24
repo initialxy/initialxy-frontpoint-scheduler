@@ -31,7 +31,7 @@ let genAction = (
     genArm(auth, partitionID, action);
   } else {
     return();
-  }
+  };
   genLogout(auth);
 }
 
@@ -74,7 +74,7 @@ let genCheckActionStep = (
   );
   switch (schedulesToAction) {
     | [] => return(schedules)
-    | [s, ...x] => {
+    | [s, ..._] => {
       let%lwt _ = genLog(refTs, TriggerAction, scheduleToStr(s));
       let%lwt _ = genActionWithRetry(refTs, userName, password, s.action, 1);
       let%lwt _ = genLog(refTs, ActionSuccess, scheduleToStr(s));
@@ -125,7 +125,7 @@ let rec genLoop = (
     Lwt_unix.sleep(float_of_int(interval));
   } else {
     return();
-  }
+  };
   genLoop(~cachedSchedules=schedules, userName, password, interval);
 }
 
@@ -237,7 +237,7 @@ let main = () => {
     }
   } else {
     return();
-  }
+  };
 
   if (toRunInterval^ > 0) {
     let interval = toRunInterval^;
@@ -245,7 +245,6 @@ let main = () => {
     let userName = read_line();
     print_endline("Enter password:");
     let password = readPassword();
-    let%lwt schedules = genSchedules();
     print_endline("Start loop");
     genLoop(userName, password, interval);
   } else {

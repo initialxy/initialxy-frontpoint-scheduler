@@ -1,8 +1,6 @@
 open Cohttp_lwt_unix;
 open Cohttp;
 open Lwt;
-open Unix;
-open Yojson;
 
 type authInfo = {
   afg: string,
@@ -64,7 +62,7 @@ let genPreprocessResponse = (
   if (code == `OK || code == `Found) {
     let cookie = Header.get_multi(Response.headers(meta), "set-cookie")
       |> String.concat("; ");
-    let%lwt bodyText = Cohttp_lwt.Body.to_string(body)
+    let%lwt bodyText = Cohttp_lwt.Body.to_string(body);
     return((cookie, bodyText));
   } else {
     fail(Failure(
@@ -103,7 +101,7 @@ let genLogin = (userName: string, password: string): Lwt.t(authInfo) => {
   )
     >>= genPreprocessResponse;
   let dest = stripQuotes(body);
-  let%lwt (cookie, body) = Client.get(Uri.of_string(dest))
+  let%lwt (cookie, _) = Client.get(Uri.of_string(dest))
     >>= genPreprocessResponse;
   if (Str.string_match(Str.regexp({|.*\bafg=\([^;]+\);.*|}), cookie, 0)) {
     let afg = Str.matched_group(1, cookie);
@@ -145,7 +143,7 @@ let genSystemID = (auth: authInfo): Lwt.t(string) => {
         |> to_string,
       );
     return(switch (systemIDs) {
-      | [i, ...x] => i
+      | [i, ..._] => i
       | _ => raise(Not_found)
     });
   }) {
@@ -171,7 +169,7 @@ let genPartitionID = (auth: authInfo, systemID: string): Lwt.t(string) => {
         |> to_string,
       );
     return(switch (paritionIDs) {
-      | [i, ...x] => i
+      | [i, ..._] => i
       | _ => raise(Not_found)
     });
   }) {
@@ -194,7 +192,7 @@ let genCurrentArmState = (
       |> member("attributes")
       |> member("state")
       |> to_int
-      |> intToArmState
+      |> intToArmState;
     return(state);
   }) {
     | e => fail(e)
