@@ -99,14 +99,14 @@ let getNextTimeOfDay = (
 }
 
 let rec getProjectPathRec = (curPath: Fpath.t): Fpath.t => {
-  if (Fpath.basename(curPath) == Project.name) {
+  if (
+    Fpath.basename(curPath) == Project.name ||
+    Fpath.is_current_dir(curPath) ||
+    Fpath.is_root(curPath)
+  ) {
     curPath;
   } else {
-    if (Fpath.is_root(curPath) || Fpath.is_current_dir(curPath)) {
-      Fpath.parent(Fpath.v(Sys.argv[0]));
-    } else {
-      getProjectPathRec(Fpath.parent(curPath));
-    }
+    getProjectPathRec(Fpath.parent(curPath));
   }
 }
 
