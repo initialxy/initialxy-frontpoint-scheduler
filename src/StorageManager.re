@@ -32,7 +32,7 @@ let scheduleToStr = (schedule: schedule) => Printf.sprintf(
   armStateToStr(schedule.action),
 )
 
-let maxLogRows = 10000;
+let maxLogRententionInSec = float_of_int(30 * 24 * 3600);
 
 let createLogTable = {|
   CREATE TABLE IF NOT EXISTS log (
@@ -99,10 +99,14 @@ let getNextTimeOfDay = (
 }
 
 let rec getProjectPathRec = (curPath: Fpath.t): Fpath.t => {
-  if (Fpath.basename(curPath) == Project.name || Fpath.is_root(curPath)) {
+  if (Fpath.basename(curPath) == Project.name) {
     curPath;
   } else {
-    getProjectPathRec(Fpath.parent(curPath));
+    if (Fpath.is_root(curPath) || Fpath.is_current_dir(curPath)) {
+      Fpath.parent(Fpath.v(Sys.argv[0]));
+    } else {
+      getProjectPathRec(Fpath.parent(curPath));
+    }
   }
 }
 
@@ -169,7 +173,10 @@ let genLog = (
     schedulerEventToStr(event),
     message,
   )) >>= Caqti_lwt.or_fail;
-  let%lwt _ = C.exec(cleanupQuery, Int64.of_float(Unix.time() -. 604800.0)) >>= Caqti_lwt.or_fail;
+  let%lwt _ = C.exec(
+    cleanupQuery,
+    Int64.of_float(Unix.time() -. maxLogRententionInSec),
+  ) >>= Caqti_lwt.or_fail;
   C.disconnect();
 }
 

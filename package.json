@@ -27,6 +27,7 @@
     "@opam/lwt": "4.2.1",
     "@opam/lwt_ppx": "1.2.2",
     "@opam/lwt_ssl": "1.1.2",
+    "@opam/tls": "0.10.2",
     "@opam/yojson": "1.7.0",
     "@reason-native/console": "*",
     "@reason-native/pastel": "*",

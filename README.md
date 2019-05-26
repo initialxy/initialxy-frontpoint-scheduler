@@ -12,6 +12,16 @@ Frontpoint does not offer an official API, so this script simulates their web si
 # Usage
 Install [esy](https://github.com/esy/esy) first and initialize with `esy install`. Run with `esy run` on the project root directory.
 
+However on the actual RaspberryPi, it's a bit more difficult, because esy doesn't seem to work on ARM processor even though it installs correctly. But we can still build with [dune](https://github.com/ocaml/dune). Install [opam](https://opam.ocaml.org/) first and swtich to OCaml 4.06.1 (this is the latest version that meets all package min and max version requirements as of writing). Install dune and let dune tell you what packages you need to install from opam. eg.
+
+    $ sudo apt-get install opam
+    $ opam init
+    $ opam switch 4.06.1
+    $ opam install dune
+    $ dune external-lib-deps --missing @@default  # Run the opam command it prints out
+    $ dune build
+    $ ./_build/default/src/Scheduler.exe --help
+
 | Option | Description |
 | --- | --- |
 | `--list` | List all schedules. `<id>-<nextRunTs>-<hhmm>-<Disarm/ArmStay/ArmAway>` |

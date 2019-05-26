@@ -5,8 +5,10 @@
   (public_name Scheduler)
   (libraries
     str
+    tls
     cohttp
     lwt
+    lwt_ssl
     cohttp-lwt-unix
     yojson
     caqti
