@@ -118,13 +118,13 @@ let rec genLoop = (
       let%lwt _ = genLog(refTs, Error, Printexc.to_string(e));
       return(schedules);
     }
-  }
+  };
 
   switch (schedules) {
     | [nextSchedule, ..._] => {
       let waitTime = nextSchedule.nextRunTs -. Unix.time();
       let waitTime = if (waitTime < interval) interval else waitTime;
-      let%lwt _ = genLog(refTs, Message, Printf.sprintf("Wait %f s", waitTime));
+      let%lwt _ = genLog(refTs, Message, Printf.sprintf("Wait %fs", waitTime));
       let%lwt _ = Lwt_unix.sleep(waitTime);
       genLoop(~cachedSchedules=schedules, userName, password, interval);
     }
