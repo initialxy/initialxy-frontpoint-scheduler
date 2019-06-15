@@ -122,8 +122,7 @@ let rec genLoop = (
 
   switch (schedules) {
     | [nextSchedule, ..._] => {
-      let waitTime = nextSchedule.nextRunTs -. Unix.time();
-      let waitTime = if (waitTime < interval) interval else waitTime;
+      let waitTime = max(nextSchedule.nextRunTs -. Unix.time(), interval);
       let%lwt _ = genLog(refTs, Message, Printf.sprintf("Wait %fs", waitTime));
       let%lwt _ = Lwt_unix.sleep(waitTime);
       genLoop(~cachedSchedules=schedules, userName, password, interval);
