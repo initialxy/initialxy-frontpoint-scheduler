@@ -27,7 +27,7 @@ However on the actual RaspberryPi, it's a bit more difficult, because esy doesn'
 | `--list` | List all schedules. `<id>-<nextRunTs>-<hhmm>-<Disarm/ArmStay/ArmAway>` |
 | `--add` | Add a new schedule. `<hhmm>-<Disarm/ArmStay/ArmAway>` eg. To arm away at 11:30pm, enter `2330-ArmAway` |
 | `--rm` | Remove a schedule by its time of day. `<hhmm>` |
-| `--run-interval` | Run this script at an interval in seconds to perform scheduled actions. You will be asked to enter user name and password upon launch. |
+| `--min-interval` | Minimum time between actions to avoid overwhelming the API. |
 
 Example:
 

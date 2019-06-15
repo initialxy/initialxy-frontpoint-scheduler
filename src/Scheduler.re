@@ -104,7 +104,7 @@ let rec genLoop = (
   ~cachedSchedules: option(list(schedule))=?,
   userName: string,
   password: string,
-  interval: int,
+  interval: float,
 ): Lwt.t(unit) => {
   let refTs = Unix.time();
   let%lwt schedules = switch (cachedSchedules) {
@@ -120,13 +120,16 @@ let rec genLoop = (
     }
   }
 
-  let waitTime = refTs +. float_of_int(interval) -. Unix.time();
-  let%lwt _ = if (waitTime > 0.0) {
-    Lwt_unix.sleep(float_of_int(interval));
-  } else {
-    return();
-  };
-  genLoop(~cachedSchedules=schedules, userName, password, interval);
+  switch (schedules) {
+    | [nextSchedule, ..._] => {
+      let waitTime = nextSchedule.nextRunTs -. Unix.time();
+      let waitTime = if (waitTime < interval) interval else waitTime;
+      let%lwt _ = genLog(refTs, Message, Printf.sprintf("Wait %f s", waitTime));
+      let%lwt _ = Lwt_unix.sleep(waitTime);
+      genLoop(~cachedSchedules=schedules, userName, password, interval);
+    }
+    | _ => fail(Failure("No schedules"))
+  }
 }
 
 let main = () => {
@@ -139,7 +142,8 @@ let main = () => {
   let toAdd = ref("");
   let toRm = ref("");
   let shouldList = ref(false);
-  let toRunInterval = ref(0);
+  let minInterval = ref(10);
+  let isOptionUsed = ref(false);
 
   Arg.parse(
     [
@@ -161,11 +165,9 @@ let main = () => {
         "Remove a schedule by its time of day. <hhmm>",
       ),
       (
-        "--run-interval",
-        Arg.Int(interval => toRunInterval := interval),
-        "Run this script at an interval in seconds to perform scheduled "
-          ++ "actions. You will be asked to enter user name and password "
-          ++ "upon launch.",
+        "--min-interval",
+        Arg.Int(interval => minInterval := interval),
+        "Minimum time between actions to avoid overwhelming the API.",
       ),
     ],
     _ => print_endline(usage),
@@ -174,6 +176,7 @@ let main = () => {
   
   let%lwt _ = genInitTables();
   let%lwt _ = if (shouldList^) {
+    isOptionUsed := true;
     let%lwt schedules = genSchedules();
     print_endline("id-nextRunTs-timeOfDay-action");
     return(List.iter(
@@ -185,6 +188,7 @@ let main = () => {
   }
 
   let%lwt _ = if (toAdd^ != "") {
+    isOptionUsed := true;
     let addStr = toAdd^;
     let formatRegex = Str.regexp({|^\([0-9]+\)-\([a-zA-Z]+\)$|});
     if (Str.string_match(formatRegex, addStr, 0)) {
@@ -219,6 +223,7 @@ let main = () => {
   }
 
   let%lwt _ = if (toRm^ != "") {
+    isOptionUsed := true;
     let rmStr = toRm^;
     let%lwt (_, _) = try(return(getTimeOfDayFromStr(rmStr))) {
       | e => fail(e)
@@ -239,14 +244,18 @@ let main = () => {
     return();
   };
 
-  if (toRunInterval^ > 0) {
-    let interval = toRunInterval^;
-    print_endline("Enter username:");
-    let userName = read_line();
-    print_endline("Enter password:");
-    let password = readPassword();
-    print_endline("Start loop");
-    genLoop(userName, password, interval);
+  if (!isOptionUsed^) {
+    let interval = minInterval^;
+    if (interval < 5) {
+      fail(Failure("Internal should be at least 5 seconds."));
+    } else {
+      print_endline("Enter username:");
+      let userName = read_line();
+      print_endline("Enter password:");
+      let password = readPassword();
+      print_endline("Start loop");
+      genLoop(userName, password, float_of_int(interval));
+    }
   } else {
     return();
   }
