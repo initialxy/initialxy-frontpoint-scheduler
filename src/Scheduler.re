@@ -63,17 +63,12 @@ let rec genActionWithRetry = (
 
 let genCheckActionStep = (
   refTs: float,
-  schedules: list(schedule),
   userName: string,
   password: string,
-): Lwt.t(list(schedule)) => {
-  let schedulesToAction = List.filter(s => s.nextRunTs <= refTs, schedules);
-  let schedulesToAction = List.sort(
-    (l, r) => compare(r.nextRunTs, l.nextRunTs),
-    schedulesToAction,
-  );
+): Lwt.t(unit) => {
+  let%lwt schedulesToAction = genSchedulesUntilTs(refTs);
   switch (schedulesToAction) {
-    | [] => return(schedules)
+    | [] => return()
     | [s, ..._] => {
       let%lwt _ = genLog(refTs, TriggerAction, scheduleToStr(s));
       let%lwt _ = genActionWithRetry(refTs, userName, password, s.action, 1);
@@ -94,38 +89,28 @@ let genCheckActionStep = (
         scheduleToStr,
         updatedSchedules,
       ));
-      let%lwt _ = genLog(refTs, Message, "Bumped: " ++ message);
-      return(schedules);
+      genLog(refTs, Message, "Bumped: " ++ message);
     }
   }
 }
 
 let rec genLoop = (
-  ~cachedSchedules: option(list(schedule))=?,
   userName: string,
   password: string,
   interval: float,
 ): Lwt.t(unit) => {
   let refTs = Unix.time();
-  let%lwt schedules = switch (cachedSchedules) {
-    | Some(cs) => return(cs)
-    | None => genSchedules()
-  }
-  let%lwt schedules = try%lwt(
-    genCheckActionStep(refTs, schedules, userName, password),
-  ) {
-    | e => {
-      let%lwt _ = genLog(refTs, Error, Printexc.to_string(e));
-      return(schedules);
-    }
+  let%lwt _ = try%lwt(genCheckActionStep(refTs, userName, password)) {
+    | e => genLog(refTs, Error, Printexc.to_string(e));
   };
 
-  switch (schedules) {
-    | [nextSchedule, ..._] => {
-      let waitTime = max(nextSchedule.nextRunTs -. Unix.time(), interval);
+  let%lwt nextSchedule = genNextSchedule();
+  switch (nextSchedule) {
+    | Some(schedule) => {
+      let waitTime = max(schedule.nextRunTs -. Unix.time(), interval);
       let%lwt _ = genLog(refTs, Message, Printf.sprintf("Wait %fs", waitTime));
       let%lwt _ = Lwt_unix.sleep(waitTime);
-      genLoop(~cachedSchedules=schedules, userName, password, interval);
+      genLoop(userName, password, interval);
     }
     | _ => fail(Failure("No schedules"))
   }

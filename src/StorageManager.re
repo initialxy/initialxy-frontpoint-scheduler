@@ -32,6 +32,16 @@ let scheduleToStr = (schedule: schedule) => Printf.sprintf(
   armStateToStr(schedule.action),
 )
 
+let dbRowToSchedule = (row: (int64, string, int64, string)): schedule => {
+  let (id, timeOfDay, nextRunTs, action) = row;
+  {
+    id: id,
+    timeOfDay: timeOfDay,
+    nextRunTs: Int64.to_float(nextRunTs),
+    action: strToArmState(action),
+  };
+}
+
 let maxLogRententionInSec = float_of_int(30 * 24 * 3600);
 
 let createLogTable = {|
@@ -81,7 +91,7 @@ let getNextTimeOfDay = (
   hourOfDay: int,
   minuteOfDay: int,
 ): float => {
-  let t = Unix.gmtime(refTs);
+  let t = Unix.localtime(refTs);
   let (nextTs, _) = Unix.mktime(
     {...t, tm_hour: hourOfDay, tm_min: minuteOfDay, tm_sec: 0},
   );
@@ -246,15 +256,7 @@ let genSchedules = (): Lwt.t(list(schedule)) => {
   );
   let%lwt res = C.collect_list(query, ()) >>= Caqti_lwt.or_fail;
   let%lwt _ = C.disconnect();
-  return(List.map(row => {
-    let (id, timeOfDay, nextRunTs, action) = row;
-    {
-      id: id,
-      timeOfDay: timeOfDay,
-      nextRunTs: Int64.to_float(nextRunTs),
-      action: strToArmState(action),
-    };
-  }, res));
+  return(List.map(dbRowToSchedule, res));
 }
 
 let genFindSchedule = (timeOfDay: string): Lwt.t(option(schedule)) => {
@@ -270,15 +272,43 @@ let genFindSchedule = (timeOfDay: string): Lwt.t(option(schedule)) => {
   let%lwt res = C.collect_list(query, timeOfDay) >>= Caqti_lwt.or_fail;
   let%lwt _ = C.disconnect();
   switch (res) {
-    | [(id, timeOfDay, nextRunTs, action)] => return(Some({
-        id: id,
-        timeOfDay: timeOfDay,
-        nextRunTs: Int64.to_float(nextRunTs),
-        action: strToArmState(action),
-      }))
+    | [row] => return(Some(dbRowToSchedule(row)))
     | [] => return(None)
     | _ => fail(Failure("Multiple schedules on the same time"))
   }
+}
+
+let genNextSchedule = (): Lwt.t(option(schedule)) => {
+  let%lwt (module C) = genDBConnection();
+  let query = Caqti_request.collect(
+    Caqti_type.unit,
+    Caqti_type.(tup4(int64, string, int64, string)),
+    stripQuery({|
+      SELECT id, time_of_day, next_run_ts, action FROM schedule
+      ORDER BY next_run_ts LIMIT 1;
+    |}),
+  );
+  let%lwt res = C.collect_list(query, ()) >>= Caqti_lwt.or_fail;
+  let%lwt _ = C.disconnect();
+  switch (res) {
+    | [row] => return(Some(dbRowToSchedule(row)))
+    | _ => return(None)
+  }
+}
+
+let genSchedulesUntilTs = (ts: float): Lwt.t(list(schedule)) => {
+  let%lwt (module C) = genDBConnection();
+  let query = Caqti_request.collect(
+    Caqti_type.int64,
+    Caqti_type.(tup4(int64, string, int64, string)),
+    stripQuery({|
+      SELECT id, time_of_day, next_run_ts, action FROM schedule
+      WHERE next_run_ts <= ? ORDER BY next_run_ts DESC;
+    |}),
+  );
+  let%lwt res = C.collect_list(query, Int64.of_float(ts)) >>= Caqti_lwt.or_fail;
+  let%lwt _ = C.disconnect();
+  return(List.map(dbRowToSchedule, res));
 }
 
 let genAddSchedule = (
