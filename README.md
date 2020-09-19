@@ -16,7 +16,7 @@ However on the actual RaspberryPi, it's a bit more difficult, because esy doesn'
 
     $ sudo apt-get install opam
     $ opam init
-    $ opam switch 4.06.1
+    $ opam switch create 4.06.1
     $ opam install dune reason
     $ dune external-lib-deps --missing @@default  # Run the opam command it prints out
     $ dune build
