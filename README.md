@@ -1,9 +1,12 @@
-**DO NOT USE THIS REPO! This is my personal RaspberryPi project. It is not meant to be secure nor reliable.**
+**As of writing, FrontPoint added a Captcha to their login screen, effectively breaking this project. While it's still possible to login from alarm.com, I no longer have the enthusiasm to update this project.**
+
+
+**DO NOT USE THIS PROJECT! This is my personal RaspberryPi project. It is not meant to be secure nor reliable.**
 
 ---
 
 # initialxy-frontpoint-scheduler
-A script that takes actions (disarm, arm stay, arm away) on Frontpoint Security system at scheduled times. Despite having all that fancy smart app and whatnot, Frontpoint does not offer a way to simply action at scheduled times, nor does it officially offer HomeKit integration. This repo offers a script that uses Frontpoint's web site API to take actions on your home security system. Inspirations were drawn from [node-frontpoint](https://github.com/jhurliman/node-frontpoint), though this repo contains an alternate implementation of unofficial Frontpoint API. Big thanks to [node-frontpoint](https://github.com/jhurliman/node-frontpoint) nethertheless.
+A script that takes actions (disarm, arm stay, arm away) on Frontpoint Security system at scheduled times. Despite having all that fancy smart app and whatnot, Frontpoint does not offer a way to simply action at scheduled times, nor does it officially offer HomeKit integration. This project offers a script that uses Frontpoint's web site API to take actions on your home security system. Inspirations were drawn from [node-frontpoint](https://github.com/jhurliman/node-frontpoint), though this project contains an alternate implementation of unofficial Frontpoint API. Big thanks to [node-frontpoint](https://github.com/jhurliman/node-frontpoint) nethertheless. In all fairness, it's probably more practical to use a Homebridge plugin, such as [homebridge-node-alarm-dot-com](https://github.com/mkormendy/homebridge-node-alarm-dot-com), this project serves as a learning experience for me.
 
 
 # Security Warning
@@ -12,11 +15,11 @@ Frontpoint does not offer an official API, so this script simulates their web si
 # Usage
 Install [esy](https://github.com/esy/esy) first and initialize with `esy install`. Run with `esy run` on the project root directory.
 
-However on the actual RaspberryPi, it's a bit more difficult, because esy doesn't seem to work on ARM processor even though it installs correctly. But we can still build with [dune](https://github.com/ocaml/dune). Install [opam](https://opam.ocaml.org/) first and swtich to OCaml 4.06.1 (this is the latest version that meets all package min and max version requirements as of writing). Install dune and let dune tell you what packages you need to install from opam. However you must run the executable with **absolute path** (because I didn't want to drag in another heavy library just to get absolute path in OCaml). eg.
+However on the actual RaspberryPi, it's a bit more difficult, because esy doesn't seem to work on ARM processor even though it installs correctly. But we can still build with [dune](https://github.com/ocaml/dune). Install [opam](https://opam.ocaml.org/) first and swtich to OCaml 4.10.1 (this is the latest version that meets all package requirements as of writing). Install dune and let dune tell you what packages you need to install from opam. However you must run the executable with **absolute path** (because I didn't want to drag in another heavy library just to get absolute path in OCaml). eg.
 
     $ sudo apt-get install opam
     $ opam init
-    $ opam switch create 4.06.1
+    $ opam switch create 4.10.1
     $ opam install dune reason
     $ dune external-lib-deps --missing @@default  # Run the opam command it prints out
     $ dune build
